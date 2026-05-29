@@ -1,0 +1,21 @@
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBqPdtJJhCkvbCm82QjNbhPjerbv0Mjqjc",
+  authDomain: "clinicdesk-cd36a.firebaseapp.com",
+  projectId: "clinicdesk-cd36a",
+  storageBucket: "clinicdesk-cd36a.firebasestorage.app",
+  messagingSenderId: "369514773212",
+  appId: "1:369514773212:web:09b5f68a3c8836dc5c5219",
+  measurementId: "G-4GEDGF3PJ1"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);

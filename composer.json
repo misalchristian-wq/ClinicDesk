@@ -1,0 +1,7 @@
+{
+    "require": {
+        "kreait/firebase-php": "~7.24",
+        "phpoffice/phpspreadsheet": "^5.7",
+        "phpmailer/phpmailer": "^7.0"
+    }
+}
