@@ -16,9 +16,13 @@
     .container-custom { max-width: 900px; margin: 0 auto; padding: 24px 20px; }
     .header-box { background: linear-gradient(135deg, var(--clinic-primary), var(--clinic-secondary)); color: white; padding: 24px 28px; border-radius: 24px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; box-shadow: 0 16px 38px rgba(15, 118, 110, 0.18); }
     .header-box h1 { font-size: 1.6rem; font-weight: 800; margin: 0; }
-    .btn-back { background: white; color: var(--clinic-primary); border: none; border-radius: 14px; padding: 10px 20px; font-weight: 700; text-decoration: none; }
-    .btn-save { background: white; color: var(--clinic-primary); border: none; border-radius: 14px; padding: 12px 24px; font-weight: 700; cursor: pointer; box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
-    .btn-save:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-back, .btn-refresh, .btn-save {
+      background: white; color: var(--clinic-primary); border: none; border-radius: 14px;
+      padding: 12px 20px; font-weight: 700; text-decoration: none; display: inline-block;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1); cursor: pointer;
+    }
+    .btn-back:hover, .btn-refresh:hover, .btn-save:hover { background: #ecfeff; color: var(--clinic-primary); }
+    .btn-save:disabled, .btn-refresh:disabled { opacity: 0.6; cursor: not-allowed; }
     .section-card { background: white; border: 1px solid var(--clinic-border); border-radius: var(--clinic-radius); padding: 24px; margin-bottom: 20px; box-shadow: var(--clinic-shadow); }
     .section-title { font-size: 1.3rem; font-weight: 800; color: var(--clinic-primary); margin-bottom: 16px; }
     .radio-group { display: flex; flex-wrap: wrap; gap: 16px; margin: 8px 0 16px; }
@@ -27,8 +31,11 @@
     .checkbox-group { display: flex; flex-wrap: wrap; gap: 16px; margin: 8px 0 16px; }
     .conditional-section { background: #fbfefe; border: 1px solid var(--clinic-border); border-radius: 14px; padding: 16px; margin-top: 12px; }
     .form-control { border-radius: 12px; border: 1px solid var(--clinic-border); padding: 10px 14px; }
+    .form-control:focus { border-color: var(--clinic-secondary); box-shadow: 0 0 0 0.2rem rgba(20,184,166,0.12); }
     .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .alert { border-radius: 14px; border: none; margin-bottom: 16px; }
+    .modal-content { border-radius: var(--clinic-radius); }
+    .school-year-select { max-width: 200px; }
     @media (max-width: 768px) { .container-custom { padding: 12px; } .form-grid-2 { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -37,14 +44,24 @@
   <div class="header-box no-print">
     <div>
       <h1>🍽️ BOX 8 & 9 – Food Handling & Feeding Program</h1>
-      <p style="margin:4px 0 0; opacity:0.9;">Canteen, kitchen, feeding fund sources, and agriculture resources</p>
+      <p style="margin:4px 0 0; opacity:0.9;">Canteen, kitchen, feeding fund sources, and agriculture resources – Editable</p>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <select v-model="selectedSchoolYear" class="form-select school-year-select">
+        <option value="2021-2022">2021-2022</option>
+        <option value="2022-2023">2022-2023</option>
+        <option value="2023-2024">2023-2024</option>
+        <option value="2025-2026">2025-2026</option>
+        <option value="2027-2028">2027-2028</option>
+      </select>
+      <button class="btn-refresh" @click="openLoadModal" :disabled="saving">📂 Load from Saved</button>
+      <button class="btn-refresh" @click="loadAggregatedData" :disabled="loading">🔄 Load from Records</button>
       <button class="btn-save" @click="saveData" :disabled="saving">{{ saving ? 'Saving...' : '💾 Save' }}</button>
       <button class="btn-save" @click="printForm" style="background:#f0fdfa; color:#0f766e;">🖨️ Print</button>
       <a href="reports.php" class="btn-back">← Back</a>
     </div>
   </div>
+
   <div v-if="message" :class="['alert', messageType === 'success' ? 'alert-success' : 'alert-danger']">{{ message }}</div>
 
   <!-- BOX 8 -->
@@ -113,37 +130,128 @@
       </div>
     </div>
   </div>
+
+  <!-- LOAD MODAL (Saved reports) -->
+  <div class="modal fade" id="loadModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title fw-bold">📂 Load Saved Report – {{ selectedSchoolYear }}</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div v-if="savedReportsLoading" class="text-center py-4"><div class="spinner-border text-primary"></div> Loading...</div>
+          <div v-else-if="savedReports.length === 0" class="alert alert-info">No saved reports for {{ selectedSchoolYear }}.</div>
+          <div v-else class="table-responsive">
+            <table class="table table-bordered">
+              <thead><tr><th>Saved By</th><th>Saved At</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="(rep, idx) in savedReports" :key="idx">
+                  <td>{{ rep.saved_by }}</td>
+                  <td>{{ rep.saved_at }}</td>
+                  <td><button class="btn btn-sm btn-success" @click="loadSelectedReport(rep.report_data)">Load</button></td>
+                </tr>
+              </tbody>
+            <tr>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const { createApp } = Vue;
+
 createApp({
   data() {
     return {
       feedingFundSources: ['School MOOE','School Canteen Fund','LGU Fund','PTA Fund','Barangay Fund','Private Individual/Sector Fund','SBFP'],
       agriResources: ['Gulayan sa Paaralan','Fish Pond','Agricultural Crops','Livestock'],
+      selectedSchoolYear: "2021-2022",
       formData: {
         hasCanteen: '', canteenManager: '', canteenManagerOther: '',
         sanitaryPermit: '', healthCertificates: '', hasKitchen: '',
         feedingFundSources: [], agriResources: []
       },
-      saving: false, message: '', messageType: 'success'
+      saving: false,
+      loading: false,
+      message: '',
+      messageType: 'success',
+      savedReports: [],
+      savedReportsLoading: false,
+      loadModal: null
     };
   },
+
+  mounted() {
+    this.loadModal = new bootstrap.Modal(document.getElementById('loadModal'));
+  },
+
   methods: {
+    async openLoadModal() {
+      this.savedReportsLoading = true;
+      try {
+        const url = `api/get_report_list.php?report_key=box8_9&school_year=${this.selectedSchoolYear}&cache_buster=${Date.now()}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        this.savedReports = data.success ? data.reports : [];
+      } catch(e) {
+        this.showMessage('danger', 'Error loading saved reports: ' + e.message);
+      }
+      this.savedReportsLoading = false;
+      this.loadModal.show();
+    },
+
+    loadSelectedReport(reportData) {
+      Object.assign(this.formData, reportData);
+      if (!this.formData.feedingFundSources) this.formData.feedingFundSources = [];
+      if (!this.formData.agriResources) this.formData.agriResources = [];
+      this.loadModal.hide();
+      this.showMessage('success', `Loaded saved report for ${this.selectedSchoolYear}. You can now edit and save.`);
+    },
+
+    async loadAggregatedData() {
+      this.loading = true;
+      this.showMessage('info', 'No aggregated data available for Box 8/9. Use "Load from Saved" to view previously saved reports.');
+      this.loading = false;
+    },
+
     async saveData() {
       this.saving = true;
       try {
-        const res = await fetch('api/save_box8_box9.php', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(this.formData) });
+        const res = await fetch('api/save_report.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            report_key: 'box8_9',
+            school_year: this.selectedSchoolYear,
+            saved_by: localStorage.getItem('local_full_name') || 'Clinic Nurse',
+            report_data: this.formData
+          })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const result = await res.json();
-        this.messageType = result.success ? 'success' : 'danger';
-        this.message = result.message || 'Saved.';
-      } catch(e) { this.messageType='danger'; this.message='Error: '+e.message; }
+        this.showMessage(result.success ? 'success' : 'danger', result.message || (result.success ? 'Saved.' : 'Save failed.'));
+      } catch(e) {
+        this.showMessage('danger', 'Error: ' + e.message);
+      }
       this.saving = false;
-      setTimeout(()=>{ this.message=''; }, 5000);
     },
-    printForm() { window.print(); }
+
+    showMessage(type, text) {
+      this.messageType = type;
+      this.message = text;
+      setTimeout(() => { this.message = ''; }, 5000);
+    },
+
+    printForm() {
+      window.print();
+    }
   }
 }).mount("#app");
 </script>

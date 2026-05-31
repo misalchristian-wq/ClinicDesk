@@ -354,6 +354,36 @@
       color: var(--clinic-primary);
     }
 
+    .dashboard-card {
+      background: white;
+      border: 1px solid var(--clinic-border);
+      border-radius: 22px;
+      padding: 20px;
+      box-shadow: 0 10px 26px rgba(15, 118, 110, 0.07);
+      transition: 0.2s ease;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .dashboard-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 16px 32px rgba(15, 118, 110, 0.12);
+    }
+
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      background: var(--clinic-soft);
+      color: var(--clinic-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 16px;
+    }
+
     .mini-grid {
       display: grid;
       gap: 14px;
@@ -600,27 +630,35 @@
       line-height: 1.5;
     }
 
+    .alert {
+      border-radius: 16px;
+      border: none;
+      box-shadow: var(--clinic-shadow);
+    }
+
+    .alert-info {
+      background: #ecfeff;
+      color: #155e75;
+      border: 1px solid #bae6fd;
+    }
+
     @media (max-width: 1200px) {
       .admin-shell {
         grid-template-columns: 1fr;
       }
-
       .sidebar {
         position: static;
         height: auto;
         border-right: none;
         border-bottom: 1px solid var(--clinic-border);
       }
-
       .side-menu {
         grid-template-columns: repeat(2, 1fr);
       }
-
       .executive-layout,
       .content-grid {
         grid-template-columns: 1fr;
       }
-
       .summary-grid {
         grid-template-columns: repeat(2, 1fr);
       }
@@ -630,28 +668,22 @@
       .main-content {
         padding: 16px;
       }
-
       .sidebar {
         padding: 20px 16px;
       }
-
       .side-menu,
       .summary-grid {
         grid-template-columns: 1fr;
       }
-
       .topbar {
         padding: 18px;
       }
-
       .page-title {
         font-size: 26px;
       }
-
       .executive-card {
         padding: 24px;
       }
-
       .executive-title {
         font-size: 27px;
       }
@@ -678,63 +710,34 @@
     </div>
 
     <div class="side-label">Navigation</div>
-
     <div class="side-menu">
       <a href="school-admin-dashboard.php" class="side-link active">
-        <span class="side-icon">🏠</span>
-        Overview
+        <span class="side-icon">🏠</span> Overview
       </a>
-
       <a href="reports.php" class="side-link">
-        <span class="side-icon">📊</span>
-        Reports
+        <span class="side-icon">📊</span> Reports
       </a>
-
-    
     </div>
-
     <div class="side-label">Session</div>
-
-    <button class="logout-btn" @click="logout">
-      Logout
-    </button>
+    <button class="logout-btn" @click="logout">Logout</button>
   </aside>
 
   <main class="main-content">
-
     <div class="topbar">
       <div>
         <div class="page-kicker">Principal Monitoring Portal</div>
         <h1 class="page-title">School Health Overview</h1>
-        <p class="page-subtitle">
-          Executive summary of student nutritional records, risk levels, and clinic monitoring progress.
-        </p>
+        <p class="page-subtitle">Executive summary of student nutritional records, risk levels, and clinic monitoring progress.</p>
       </div>
-
-      <div class="date-chip">
-        {{ currentDate }}
-      </div>
+      <div class="date-chip">{{ currentDate }}</div>
     </div>
 
     <div class="executive-layout">
       <section class="executive-card">
         <div class="executive-content">
-          <div class="executive-tag">
-            <span>📌</span>
-            Executive School Health Summary
-          </div>
-
-          <h2 class="executive-title">
-            Welcome, {{ adminName }}.
-          </h2>
-
-          <p class="executive-text">
-            This dashboard provides a school-level overview of student nutritional monitoring.
-            It helps the principal review high-risk students, monitor report summaries, and support
-            school clinic decisions based on approved student health records.
-          </p>
-
-          
+          <div class="executive-tag"><span>📌</span> Executive School Health Summary</div>
+          <h2 class="executive-title">Welcome, {{ adminName }}.</h2>
+          <p class="executive-text">This dashboard provides a school-level overview of student nutritional monitoring. It helps the principal review high-risk students, monitor report summaries, and support school clinic decisions based on approved student health records.</p>
         </div>
       </section>
 
@@ -746,15 +749,6 @@
           </div>
           <div class="mini-icon">🔒</div>
         </div>
-
-        <div class="mini-card">
-          <div>
-            <div class="mini-label">Report Status</div>
-            <p class="mini-value">Available</p>
-          </div>
-          <div class="mini-icon">📄</div>
-        </div>
-
         <div class="mini-card">
           <div>
             <div class="mini-label">Monitoring Scope</div>
@@ -765,25 +759,34 @@
       </section>
     </div>
 
+    <!-- Generated Reports Card (properly placed) -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-6 col-lg-4">
+        <div class="dashboard-card">
+          <div class="card-icon">📑</div>
+          <h4>Generated Reports</h4>
+          <p>View all consolidated reports generated by the clinic nurse.</p>
+          <a href="view-reports.php" class="btn-main mt-auto" style="display: inline-block; text-align: center;">View Reports</a>
+        </div>
+      </div>
+    </div>
+
     <div class="summary-grid">
       <div class="summary-card">
         <div class="summary-label">Total Students</div>
         <p class="summary-value">{{ records.length }}</p>
         <p class="summary-helper">Approved nutritional records</p>
       </div>
-
       <div class="summary-card">
         <div class="summary-label">High Risk</div>
         <p class="summary-value">{{ highRiskCount }}</p>
         <p class="summary-helper">Priority clinic follow-up</p>
       </div>
-
       <div class="summary-card">
         <div class="summary-label">Moderate Risk</div>
         <p class="summary-value">{{ moderateRiskCount }}</p>
         <p class="summary-helper">Needs regular monitoring</p>
       </div>
-
       <div class="summary-card">
         <div class="summary-label">Low Risk</div>
         <p class="summary-value">{{ lowRiskCount }}</p>
@@ -794,182 +797,68 @@
     <div class="content-grid">
       <div class="panel-card">
         <h2 class="panel-title">Risk Level Distribution</h2>
-        <p class="panel-desc">
-          Overall student risk classification based on BMI and height-for-age.
-        </p>
-
-        <div class="chart-box">
-          <canvas id="riskChart"></canvas>
-        </div>
+        <p class="panel-desc">Overall student risk classification based on BMI and height-for-age.</p>
+        <div class="chart-box"><canvas id="riskChart"></canvas></div>
       </div>
-
       <div class="panel-card">
         <h2 class="panel-title">BMI Category Distribution</h2>
-        <p class="panel-desc">
-          Overview of student BMI categories across approved records.
-        </p>
-
-        <div class="chart-box">
-          <canvas id="bmiChart"></canvas>
-        </div>
+        <p class="panel-desc">Overview of student BMI categories across approved records.</p>
+        <div class="chart-box"><canvas id="bmiChart"></canvas></div>
       </div>
     </div>
 
     <div class="content-grid">
       <div class="panel-card">
         <h2 class="panel-title">Principal Action Priorities</h2>
-        <p class="panel-desc">
-          Suggested administrative support based on student health risk.
-        </p>
-
+        <p class="panel-desc">Suggested administrative support based on student health risk.</p>
         <div class="priority-list">
-          <div class="priority-item">
-            <div class="priority-icon high">!</div>
-            <div>
-              <div class="priority-title">High Risk Monitoring</div>
-              <p class="priority-text">
-                Coordinate with the clinic nurse to prioritize students classified as high risk.
-              </p>
-            </div>
-          </div>
-
-          <div class="priority-item">
-            <div class="priority-icon medium">2</div>
-            <div>
-              <div class="priority-title">Parent or Guardian Communication</div>
-              <p class="priority-text">
-                Support follow-up communication when the clinic nurse recommends additional intervention.
-              </p>
-            </div>
-          </div>
-
-          <div class="priority-item">
-            <div class="priority-icon low">✓</div>
-            <div>
-              <div class="priority-title">Routine School Health Programs</div>
-              <p class="priority-text">
-                Continue school-wide health promotion, hygiene reminders, and nutrition awareness activities.
-              </p>
-            </div>
-          </div>
+          <div class="priority-item"><div class="priority-icon high">!</div><div><div class="priority-title">High Risk Monitoring</div><p class="priority-text">Coordinate with the clinic nurse to prioritize students classified as high risk.</p></div></div>
+          <div class="priority-item"><div class="priority-icon medium">2</div><div><div class="priority-title">Parent or Guardian Communication</div><p class="priority-text">Support follow-up communication when the clinic nurse recommends additional intervention.</p></div></div>
+          <div class="priority-item"><div class="priority-icon low">✓</div><div><div class="priority-title">Routine School Health Programs</div><p class="priority-text">Continue school-wide health promotion, hygiene reminders, and nutrition awareness activities.</p></div></div>
         </div>
       </div>
-
       <div class="panel-card">
         <h2 class="panel-title">Administrative Notes</h2>
-        <p class="panel-desc">
-          Summary notes for report review and decision support.
-        </p>
-
+        <p class="panel-desc">Summary notes for report review and decision support.</p>
         <div class="priority-list">
-          <div class="priority-item">
-            <div class="priority-icon low">📊</div>
-            <div>
-              <div class="priority-title">Review Printed Reports</div>
-              <p class="priority-text">
-                Use the reports page to generate school-level nutritional monitoring summaries.
-              </p>
-            </div>
-          </div>
-
-          <div class="priority-item">
-            <div class="priority-icon medium">👥</div>
-            <div>
-              <div class="priority-title">Coordinate With Teachers</div>
-              <p class="priority-text">
-                Teachers may view nurse-generated reports for classroom monitoring and student support.
-              </p>
-            </div>
-          </div>
-
-          <div class="priority-item">
-            <div class="priority-icon high">🩺</div>
-            <div>
-              <div class="priority-title">Clinic Nurse Handles Screening</div>
-              <p class="priority-text">
-                Health assessment screening and meal plan monitoring remain under clinic nurse access.
-              </p>
-            </div>
-          </div>
+          <div class="priority-item"><div class="priority-icon low">📊</div><div><div class="priority-title">Review Printed Reports</div><p class="priority-text">Use the reports page to generate school-level nutritional monitoring summaries.</p></div></div>
+          <div class="priority-item"><div class="priority-icon medium">👥</div><div><div class="priority-title">Coordinate With Teachers</div><p class="priority-text">Teachers may view nurse-generated reports for classroom monitoring and student support.</p></div></div>
+          <div class="priority-item"><div class="priority-icon high">🩺</div><div><div class="priority-title">Clinic Nurse Handles Screening</div><p class="priority-text">Health assessment screening and meal plan monitoring remain under clinic nurse access.</p></div></div>
         </div>
       </div>
     </div>
 
     <div class="table-card">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-          <h2 class="panel-title mb-1">Recent Student Nutritional Records</h2>
-          <p class="panel-desc mb-0">
-            Read-only preview of approved student health records.
-          </p>
-        </div>
-
-        <a href="reports.php" class="btn-main">
-          View Full Report
-        </a>
+        <div><h2 class="panel-title mb-1">Recent Student Nutritional Records</h2><p class="panel-desc mb-0">Read-only preview of approved student health records.</p></div>
+        <a href="reports.php" class="btn-main">View Full Report</a>
       </div>
-
-      <div v-if="loading" class="alert alert-info mt-3">
-        Loading school health overview...
-      </div>
-
+      <div v-if="loading" class="alert alert-info mt-3">Loading school health overview...</div>
       <div class="table-responsive">
         <table class="table table-bordered align-middle">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Student</th>
-              <th>Grade/Section</th>
-              <th>BMI</th>
-              <th>BMI Category</th>
-              <th>Height-for-Age</th>
-              <th>Risk Level</th>
-              <th>Recommendation</th>
-            </tr>
-          </thead>
-
+          <thead><tr><th>#</th><th>Student</th><th>Grade/Section</th><th>BMI</th><th>BMI Category</th><th>Height-for-Age</th><th>Risk Level</th><th>Recommendation</th></tr></thead>
           <tbody>
-            <tr v-if="records.length === 0 && !loading">
-              <td colspan="8" class="text-center text-muted p-4">
-                No approved student records found.
-              </td>
-            </tr>
-
+            <tr v-if="records.length === 0 && !loading"><td colspan="8" class="text-center text-muted p-4">No approved student records found.</td></tr>
             <tr v-for="(record, index) in recentRecords" :key="record.record_id || index">
               <td>{{ index + 1 }}</td>
               <td class="fw-bold">{{ record.learner_name || "-" }}</td>
               <td>{{ record.grade_level || "-" }} - {{ record.section || "-" }}</td>
               <td>{{ record.bmi || "-" }}</td>
-
-              <td>
-                <span class="badge" :class="getBmiBadge(record.bmi_category)">
-                  {{ record.bmi_category || "For Review" }}
-                </span>
-              </td>
-
+              <td><span class="badge" :class="getBmiBadge(record.bmi_category)">{{ record.bmi_category || "For Review" }}</span></td>
               <td>{{ getHeightForAge(record) }}</td>
-
-              <td>
-                <span class="badge" :class="getRiskBadge(getRiskLevel(record))">
-                  {{ getRiskLevel(record) }}
-                </span>
-              </td>
-
+              <td><span class="badge" :class="getRiskBadge(getRiskLevel(record))">{{ getRiskLevel(record) }}</span></td>
               <td>{{ getRecommendation(record) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
     </div>
-
   </main>
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-
 <script>
 const { createApp } = Vue;
-
 createApp({
   data() {
     return {
@@ -977,301 +866,80 @@ createApp({
       currentDate: "",
       records: [],
       loading: false,
-
       riskChart: null,
       bmiChart: null
     };
   },
-
   computed: {
-    recentRecords() {
-      return this.records.slice(0, 8);
-    },
-
-    highRiskCount() {
-      return this.records.filter(record => this.getRiskLevel(record) === "High").length;
-    },
-
-    moderateRiskCount() {
-      return this.records.filter(record => this.getRiskLevel(record) === "Moderate").length;
-    },
-
-    lowRiskCount() {
-      return this.records.filter(record => this.getRiskLevel(record) === "Low").length;
-    },
-
-    forReviewCount() {
-      return this.records.filter(record => this.getRiskLevel(record) === "For Review").length;
-    },
-
-    normalBmiCount() {
-      return this.records.filter(record => String(record.bmi_category || "") === "Normal").length;
-    },
-
-    underweightCount() {
-      return this.records.filter(record => String(record.bmi_category || "") === "Underweight").length;
-    },
-
-    severelyUnderweightCount() {
-      return this.records.filter(record => String(record.bmi_category || "") === "Severely Underweight").length;
-    },
-
-    overweightCount() {
-      return this.records.filter(record => String(record.bmi_category || "") === "Overweight").length;
-    },
-
-    obeseCount() {
-      return this.records.filter(record => String(record.bmi_category || "") === "Obese").length;
-    }
+    recentRecords() { return this.records.slice(0, 8); },
+    highRiskCount() { return this.records.filter(r => this.getRiskLevel(r) === "High").length; },
+    moderateRiskCount() { return this.records.filter(r => this.getRiskLevel(r) === "Moderate").length; },
+    lowRiskCount() { return this.records.filter(r => this.getRiskLevel(r) === "Low").length; },
+    forReviewCount() { return this.records.filter(r => this.getRiskLevel(r) === "For Review").length; },
+    normalBmiCount() { return this.records.filter(r => String(r.bmi_category || "") === "Normal").length; },
+    underweightCount() { return this.records.filter(r => String(r.bmi_category || "") === "Underweight").length; },
+    severelyUnderweightCount() { return this.records.filter(r => String(r.bmi_category || "") === "Severely Underweight").length; },
+    overweightCount() { return this.records.filter(r => String(r.bmi_category || "") === "Overweight").length; },
+    obeseCount() { return this.records.filter(r => String(r.bmi_category || "") === "Obese").length; }
   },
-
   mounted() {
     const role = localStorage.getItem("active_role");
     const accountId = localStorage.getItem("local_account_id");
-
-    if (role !== "School Admin" || !accountId) {
-      window.location.href = "login.php";
-      return;
-    }
-
+    if (role !== "School Admin" || !accountId) { window.location.href = "login.php"; return; }
     this.adminName = localStorage.getItem("local_full_name") || "School Admin";
-
-    this.currentDate = new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric"
-    });
-
+    this.currentDate = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     this.loadRecords();
   },
-
   methods: {
     async loadRecords() {
       this.loading = true;
-
       try {
         const response = await fetch("api/get_student_records.php?cache_buster=" + Date.now());
         const text = await response.text();
-
         let result;
-
-        try {
-          result = JSON.parse(text);
-        } catch (jsonError) {
-          alert("Student records API did not return JSON. Check api/get_student_records.php.");
-          this.loading = false;
-          return;
-        }
-
-        if (result.success) {
-          this.records = result.records || [];
-
-          this.$nextTick(() => {
-            this.renderCharts();
-          });
-        } else {
-          alert(result.message || "Failed to load student records.");
-        }
-
-      } catch (error) {
-        alert("Error loading student records: " + error.message);
-      }
-
+        try { result = JSON.parse(text); } catch(e) { alert("Student records API error"); this.loading=false; return; }
+        if (result.success) { this.records = result.records || []; this.$nextTick(() => { this.renderCharts(); }); }
+        else alert(result.message || "Failed to load student records.");
+      } catch(e) { alert("Error loading student records: " + e.message); }
       this.loading = false;
     },
-
     logout() {
-      localStorage.removeItem("active_role");
-
-      localStorage.removeItem("local_account_id");
-      localStorage.removeItem("local_full_name");
-      localStorage.removeItem("local_email");
-      localStorage.removeItem("local_role");
-      localStorage.removeItem("local_login_time");
-
-      localStorage.removeItem("teacher_uid");
-      localStorage.removeItem("teacher_email");
-      localStorage.removeItem("teacher_id_token");
-      localStorage.removeItem("teacher_refresh_token");
-      localStorage.removeItem("teacher_login_time");
-
+      localStorage.clear();
       window.location.href = "login.php";
     },
-
-    getHeightForAge(record) {
-      return record.height_for_age_status ||
-             record.height_for_age ||
-             record.hfa_status ||
-             "-";
-    },
-
-    getRiskLevel(record) {
-      if (record.risk_level) return record.risk_level;
-
-      const bmiCategory = String(record.bmi_category || "").toLowerCase();
-      const hfa = String(this.getHeightForAge(record) || "").toLowerCase();
-
-      if (
-        bmiCategory.includes("severely") ||
-        bmiCategory.includes("obese") ||
-        hfa.includes("severely")
-      ) {
-        return "High";
-      }
-
-      if (
-        bmiCategory.includes("underweight") ||
-        bmiCategory.includes("overweight") ||
-        hfa.includes("stunted")
-      ) {
-        return "Moderate";
-      }
-
-      if (
-        bmiCategory.includes("normal") &&
-        (hfa.includes("normal") || hfa === "-")
-      ) {
-        return "Low";
-      }
-
+    getHeightForAge(r) { return r.height_for_age_status || r.height_for_age || r.hfa_status || "-"; },
+    getRiskLevel(r) {
+      if (r.risk_level) return r.risk_level;
+      const b = String(r.bmi_category || "").toLowerCase(), h = String(this.getHeightForAge(r) || "").toLowerCase();
+      if (b.includes("severely") || b.includes("obese") || h.includes("severely")) return "High";
+      if (b.includes("underweight") || b.includes("overweight") || h.includes("stunted")) return "Moderate";
+      if (b.includes("normal") && (h.includes("normal") || h === "-")) return "Low";
       return "For Review";
     },
-
-    getRecommendation(record) {
-      if (record.recommendation) return record.recommendation;
-
-      const risk = this.getRiskLevel(record);
-      const bmiCategory = String(record.bmi_category || "").toLowerCase();
-
-      if (risk === "High") {
-        return "Priority clinic follow-up recommended.";
-      }
-
-      if (bmiCategory.includes("underweight")) {
-        return "Monitor weight and encourage balanced meals.";
-      }
-
-      if (bmiCategory.includes("overweight") || bmiCategory.includes("obese")) {
-        return "Encourage healthy diet and physical activity.";
-      }
-
-      if (risk === "Moderate") {
-        return "Continue monitoring and schedule follow-up.";
-      }
-
-      if (risk === "Low") {
-        return "Routine monitoring.";
-      }
-
+    getRecommendation(r) {
+      if (r.recommendation) return r.recommendation;
+      const risk = this.getRiskLevel(r), b = String(r.bmi_category || "").toLowerCase();
+      if (risk === "High") return "Priority clinic follow-up recommended.";
+      if (b.includes("underweight")) return "Monitor weight and encourage balanced meals.";
+      if (b.includes("overweight") || b.includes("obese")) return "Encourage healthy diet and physical activity.";
+      if (risk === "Moderate") return "Continue monitoring and schedule follow-up.";
+      if (risk === "Low") return "Routine monitoring.";
       return "For clinic review.";
     },
-
-    getBmiBadge(category) {
-      const text = String(category || "").toLowerCase();
-
-      if (text.includes("normal")) return "bg-success";
-      if (text.includes("severely")) return "bg-danger";
-      if (text.includes("underweight")) return "bg-warning text-dark";
-      if (text.includes("overweight")) return "bg-warning text-dark";
-      if (text.includes("obese")) return "bg-danger";
-
-      return "bg-secondary";
-    },
-
-    getRiskBadge(risk) {
-      if (risk === "Low") return "bg-success";
-      if (risk === "Moderate") return "bg-warning text-dark";
-      if (risk === "High") return "bg-danger";
-      return "bg-primary";
-    },
-
-    renderCharts() {
-      this.renderRiskChart();
-      this.renderBmiChart();
-    },
-
+    getBmiBadge(c) { const t=String(c||"").toLowerCase(); if(t.includes("normal")) return "bg-success"; if(t.includes("severely")) return "bg-danger"; if(t.includes("underweight")) return "bg-warning text-dark"; if(t.includes("overweight")) return "bg-warning text-dark"; if(t.includes("obese")) return "bg-danger"; return "bg-secondary"; },
+    getRiskBadge(r) { if(r==="Low") return "bg-success"; if(r==="Moderate") return "bg-warning text-dark"; if(r==="High") return "bg-danger"; return "bg-primary"; },
+    renderCharts() { this.renderRiskChart(); this.renderBmiChart(); },
     renderRiskChart() {
       const ctx = document.getElementById("riskChart");
-
       if (!ctx) return;
-
-      if (this.riskChart) {
-        this.riskChart.destroy();
-      }
-
-      this.riskChart = new Chart(ctx, {
-        type: "doughnut",
-        data: {
-          labels: ["High", "Moderate", "Low", "For Review"],
-          datasets: [{
-            data: [
-              this.highRiskCount,
-              this.moderateRiskCount,
-              this.lowRiskCount,
-              this.forReviewCount
-            ],
-            backgroundColor: ["#dc2626", "#f59e0b", "#16a34a", "#0ea5e9"],
-            borderWidth: 0
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: "65%",
-          plugins: {
-            legend: {
-              position: "bottom"
-            }
-          }
-        }
-      });
+      if (this.riskChart) this.riskChart.destroy();
+      this.riskChart = new Chart(ctx, { type: "doughnut", data: { labels: ["High","Moderate","Low","For Review"], datasets: [{ data: [this.highRiskCount, this.moderateRiskCount, this.lowRiskCount, this.forReviewCount], backgroundColor: ["#dc2626","#f59e0b","#16a34a","#0ea5e9"], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: "65%", plugins: { legend: { position: "bottom" } } } });
     },
-
     renderBmiChart() {
       const ctx = document.getElementById("bmiChart");
-
       if (!ctx) return;
-
-      if (this.bmiChart) {
-        this.bmiChart.destroy();
-      }
-
-      this.bmiChart = new Chart(ctx, {
-        type: "bar",
-        data: {
-          labels: ["Normal", "Underweight", "Severely Underweight", "Overweight", "Obese"],
-          datasets: [{
-            label: "Students",
-            data: [
-              this.normalBmiCount,
-              this.underweightCount,
-              this.severelyUnderweightCount,
-              this.overweightCount,
-              this.obeseCount
-            ],
-            backgroundColor: ["#16a34a", "#f59e0b", "#dc2626", "#f97316", "#991b1b"],
-            borderRadius: 10
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              display: false
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: {
-                precision: 0
-              }
-            }
-          }
-        }
-      });
+      if (this.bmiChart) this.bmiChart.destroy();
+      this.bmiChart = new Chart(ctx, { type: "bar", data: { labels: ["Normal","Underweight","Severely Underweight","Overweight","Obese"], datasets: [{ label: "Students", data: [this.normalBmiCount, this.underweightCount, this.severelyUnderweightCount, this.overweightCount, this.obeseCount], backgroundColor: ["#16a34a","#f59e0b","#dc2626","#f97316","#991b1b"], borderRadius: 10 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
     }
   }
 }).mount("#app");

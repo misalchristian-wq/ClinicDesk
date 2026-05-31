@@ -699,3 +699,22 @@ COMMIT;
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+CREATE TABLE IF NOT EXISTS report_saved_data (
+    report_id INT AUTO_INCREMENT PRIMARY KEY,
+    report_key VARCHAR(50) NOT NULL COMMENT 'e.g., box2_3, box4, box5_6, box8_9, box10_11, table1_a, table1_b',
+    school_year VARCHAR(50) NOT NULL,
+    report_data LONGTEXT NOT NULL COMMENT 'JSON data',
+    saved_by VARCHAR(150) NOT NULL,
+    saved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_report (report_key, school_year)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS generated_reports (
+    report_id INT AUTO_INCREMENT PRIMARY KEY,
+    school_year VARCHAR(50) NOT NULL,
+    report_type VARCHAR(50) DEFAULT 'consolidated',
+    cloudinary_url TEXT NOT NULL,
+    cloudinary_public_id VARCHAR(255),
+    generated_by VARCHAR(150) NOT NULL,
+    generated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
