@@ -167,12 +167,6 @@
         </div>
       </div>
 
-      <div class="card-box mb-4" v-if="student.record_id">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-          <div><h3 class="fw-bold mb-1">🔮 Vitamin Deficiency Prediction</h3><p class="small-note mb-0">Generate an AI-based prediction of possible vitamin deficiencies.</p></div>
-          <button class="btn btn-green" @click="generatePrediction" :disabled="predictionLoading">{{ predictionLoading ? 'Analyzing...' : 'Generate Prediction' }}</button>
-        </div>
-      </div>
 
       <!-- GENERAL INFORMATION -->
       <div class="card-box mb-4">

@@ -410,6 +410,17 @@
       </div>
     </div>
 
+
+
+<div class="col-md-6 col-lg-4">
+  <div class="dashboard-card">
+    <div class="card-icon">📝</div>
+    <h4>Parent Consent Form</h4>
+    <p>Generate and print a parent consent letter for student data collection. Includes signature lines for parent, clinic nurse, and principal.</p>
+    <a href="parent-consent.php" class="btn btn-outline-blue w-100 mt-auto">Generate Consent Form</a>
+  </div>
+</div>
+
     <div class="col-md-6 col-lg-4">
     <div class="dashboard-card">
         <div class="card-icon">📊</div>
