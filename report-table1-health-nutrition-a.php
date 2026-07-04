@@ -64,6 +64,10 @@
       <p style="margin:4px 0 0; opacity:0.9;">Immunization & Nutritional Status – Editable, with Save & Load from saved reports</p>
     </div>
     <div class="d-flex gap-2">
+      <select v-model="selectedSchoolYear" class="form-select" style="max-width:180px;border-radius:12px;font-weight:700;">
+        <option v-for="y in schoolYearOptions" :key="y" :value="y">{{ y }}</option>
+      </select>
+
       <button class="btn-refresh" @click="openLoadModal" :disabled="loading">📂 Load from Saved</button>
       <button class="btn-refresh" @click="loadAggregatedData" :disabled="loading">🔄 Load from Records</button>
       <button class="btn-save" @click="saveData" :disabled="saving">{{ saving ? 'Saving...' : '💾 Save' }}</button>
@@ -82,14 +86,14 @@
         <thead><tr><th>Vaccine</th><th>Male</th><th>Female</th><th>IP Learners</th></tr></thead>
         <tbody>
           <tr><td class="text-start fw-bold">Tetanus Diphtheria</td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.vaccineTD.male"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.vaccineTD.female"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.vaccineTD.ip"></td>
+            <td>{{ formData.vaccineTD.male || 0 }}</td>
+            <td>{{ formData.vaccineTD.female || 0 }}</td>
+            <td>{{ formData.vaccineTD.ip || 0 }}</td>
           </tr>
           <tr><td class="text-start fw-bold">Human Papilloma Virus</td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.vaccineHPV.male"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.vaccineHPV.female"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.vaccineHPV.ip"></td>
+            <td>{{ formData.vaccineHPV.male || 0 }}</td>
+            <td>{{ formData.vaccineHPV.female || 0 }}</td>
+            <td>{{ formData.vaccineHPV.ip || 0 }}</td>
           </tr>
         </tbody>
       </table>
@@ -106,17 +110,17 @@
         <tbody>
           <tr v-for="status in statuses" :key="'jhs-'+status">
             <td class="text-start fw-bold">{{ status }}</td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionJHS[status].g7Male"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionJHS[status].g7Female"></td>
+            <td>{{ formData.nutritionJHS[status].g7Male || 0 }}</td>
+            <td>{{ formData.nutritionJHS[status].g7Female || 0 }}</td>
             <td class="total-cell">{{ total(formData.nutritionJHS[status], 'g7') }}</td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionJHS[status].g8Male"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionJHS[status].g8Female"></td>
+            <td>{{ formData.nutritionJHS[status].g8Male || 0 }}</td>
+            <td>{{ formData.nutritionJHS[status].g8Female || 0 }}</td>
             <td class="total-cell">{{ total(formData.nutritionJHS[status], 'g8') }}</td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionJHS[status].g9Male"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionJHS[status].g9Female"></td>
+            <td>{{ formData.nutritionJHS[status].g9Male || 0 }}</td>
+            <td>{{ formData.nutritionJHS[status].g9Female || 0 }}</td>
             <td class="total-cell">{{ total(formData.nutritionJHS[status], 'g9') }}</td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionJHS[status].g10Male"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionJHS[status].g10Female"></td>
+            <td>{{ formData.nutritionJHS[status].g10Male || 0 }}</td>
+            <td>{{ formData.nutritionJHS[status].g10Female || 0 }}</td>
             <td class="total-cell">{{ total(formData.nutritionJHS[status], 'g10') }}</td>
           </tr>
         </tbody>
@@ -132,11 +136,11 @@
         <tbody>
           <tr v-for="status in statuses" :key="'shs-'+status">
             <td class="text-start fw-bold">{{ status }}</td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionSHS[status].g11Male"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionSHS[status].g11Female"></td>
+            <td>{{ formData.nutritionSHS[status].g11Male || 0 }}</td>
+            <td>{{ formData.nutritionSHS[status].g11Female || 0 }}</td>
             <td class="total-cell">{{ total(formData.nutritionSHS[status], 'g11') }}</td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionSHS[status].g12Male"></td>
-            <td><input type="number" class="form-control form-control-sm" v-model.number="formData.nutritionSHS[status].g12Female"></td>
+            <td>{{ formData.nutritionSHS[status].g12Male || 0 }}</td>
+            <td>{{ formData.nutritionSHS[status].g12Female || 0 }}</td>
             <td class="total-cell">{{ total(formData.nutritionSHS[status], 'g12') }}</td>
           </tr>
         </tbody>
@@ -220,11 +224,28 @@ createApp({
   },
 
   mounted() {
+    this.loadSchoolYearOptions();
     this.loadModal = new bootstrap.Modal(document.getElementById('loadModal'));
     // No auto load – user clicks buttons
   },
 
   methods: {
+    async loadSchoolYearOptions() {
+      try {
+        const res = await fetch('api/get_school_years.php?t=' + Date.now());
+        const data = await res.json();
+        if (data.success && Array.isArray(data.years) && data.years.length) {
+          this.schoolYearOptions = data.years.map(y => y.year_label);
+          // Default to the active year if present, else the first option.
+          if (data.active && this.schoolYearOptions.includes(data.active)) {
+            this.selectedSchoolYear = data.active;
+          } else if (!this.schoolYearOptions.includes(this.selectedSchoolYear)) {
+            this.selectedSchoolYear = this.schoolYearOptions[0];
+          }
+        }
+      } catch (e) { console.warn('Could not load school years', e); }
+    },
+
     total(obj, grade) {
       return Number(obj[grade + 'Male'] || 0) + Number(obj[grade + 'Female'] || 0);
     },
@@ -243,7 +264,7 @@ createApp({
       this.savedReportsLoading = true;
       this.savedReports = [];
       try {
-        const res = await fetch('api/get_report_list.php?report_key=table1_a&cache_buster=' + Date.now());
+        const res = await fetch('api/get_report_list.php?report_key=table1_a&school_year=' + encodeURIComponent(this.selectedSchoolYear) + '&cache_buster=' + Date.now());
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.success) {
@@ -279,7 +300,7 @@ createApp({
     async loadAggregatedData() {
       this.loading = true;
       try {
-        const response = await fetch('api/get_table1_immunization_nutrition_report.php?cache_buster=' + Date.now());
+        const response = await fetch('api/get_table1_immunization_nutrition_report.php?school_year=' + encodeURIComponent(this.selectedSchoolYear) + '&cache_buster=' + Date.now());
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const result = await response.json();
         if (!result.success) throw new Error(result.message || 'Failed to load aggregated data');
@@ -330,7 +351,7 @@ createApp({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             report_key: 'table1_a',
-            school_year: '2021-2022',
+            school_year: this.selectedSchoolYear,
             saved_by: localStorage.getItem('local_full_name') || 'Clinic Nurse',
             report_data: this.formData
           })

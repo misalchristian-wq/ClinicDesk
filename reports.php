@@ -25,8 +25,31 @@
     }
     * { box-sizing: border-box; }
     body { min-height: 100vh; margin: 0; background: #f5fafb; font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: var(--clinic-text); overflow-x: hidden; }
-    .report-shell { min-height: 100vh; display: grid; grid-template-columns: 320px 1fr; }
+    .report-shell { min-height: 100vh; }
     .sidebar { background: #ffffff; border-right: 1px solid var(--clinic-border); padding: 26px 22px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+
+    /* Unified full-width header (matches other ClinicDesk pages) */
+    .page-header {
+      background: linear-gradient(135deg, var(--clinic-primary), var(--clinic-secondary));
+      color: #fff; padding: 26px 32px; border-radius: 26px; margin-bottom: 24px;
+      box-shadow: 0 16px 38px rgba(15,118,110,0.22);
+      display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap;
+      position: relative; overflow: hidden;
+    }
+    .page-header::before { content:""; position:absolute; top:-70px; right:-50px; width:200px; height:200px; background:rgba(255,255,255,0.10); border-radius:50%; }
+    .page-header-left { display: flex; align-items: center; gap: 16px; position: relative; z-index: 2; }
+    .page-header-icon { width: 56px; height: 56px; border-radius: 18px; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.28); display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
+    .page-header-kicker { font-size: 12px; font-weight: 800; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 3px; }
+    .page-header-title { font-size: 26px; font-weight: 800; margin: 0 0 3px; }
+    .page-header-sub { font-size: 13px; opacity: 0.92; margin: 0; }
+    .page-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; position: relative; z-index: 2; }
+    .header-prepared { text-align: right; margin-right: 6px; }
+    .header-prepared-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.85; font-weight: 700; }
+    .header-prepared-name { font-size: 15px; font-weight: 800; }
+    .btn-header { background: #fff; color: var(--clinic-primary); border: none; border-radius: 13px; padding: 9px 15px; font-weight: 800; text-decoration: none; cursor: pointer; font-size: 13px; box-shadow: 0 8px 18px rgba(0,0,0,0.12); }
+    .btn-header:hover { background: #ecfeff; color: #0f5b55; }
+    .btn-header.soft { background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.35); box-shadow: none; }
+    .btn-header.soft:hover { background: rgba(255,255,255,0.26); color: #fff; }
     .brand-row { display: flex; align-items: center; gap: 13px; margin-bottom: 26px; }
     .brand-icon { width: 54px; height: 54px; border-radius: 18px; background: linear-gradient(135deg, var(--clinic-primary), var(--clinic-secondary)); color: white; display: flex; align-items: center; justify-content: center; font-size: 26px; box-shadow: 0 14px 28px rgba(15, 118, 110, 0.18); flex-shrink: 0; }
     .brand-title { font-size: 22px; font-weight: 900; color: var(--clinic-primary); line-height: 1; }
@@ -44,7 +67,7 @@
     .btn-soft { background: white; color: var(--clinic-primary); border: 1px solid var(--clinic-border); border-radius: 15px; padding: 11px 16px; font-weight: 900; text-decoration: none; text-align: center; display: inline-block; cursor: pointer; }
     .btn-soft:hover { background: var(--clinic-soft); color: var(--clinic-primary); }
     .side-actions { display: grid; gap: 10px; }
-    .main-area { padding: 28px; min-width: 0; }
+    .main-area { padding: 24px; min-width: 0; max-width: 1400px; margin: 0 auto; }
     .top-toolbar { background: white; border: 1px solid var(--clinic-border); border-radius: 24px; padding: 18px 20px; box-shadow: 0 10px 26px rgba(15, 118, 110, 0.06); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
     .toolbar-kicker { font-size: 12px; font-weight: 900; color: var(--clinic-secondary); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
     .toolbar-title { font-size: 28px; font-weight: 900; color: var(--clinic-text); margin-bottom: 2px; }
@@ -105,38 +128,33 @@
     .school-year-select { max-width: 180px; }
     @media (max-width: 1200px) { .report-shell { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--clinic-border); } .filter-group { grid-template-columns: repeat(2, 1fr); } .report-module-grid, .summary-strip, .chart-layout, .recommendation-grid { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 768px) { .main-area { padding: 16px; } .sidebar { padding: 18px; } .report-paper { padding: 20px; } .report-letterhead { grid-template-columns: 1fr; } .report-meta { text-align: left; } .filter-group, .report-module-grid, .summary-strip, .chart-layout, .recommendation-grid, .signature-grid { grid-template-columns: 1fr; } .toolbar-title, .report-title, .report-center-title { font-size: 24px; } }
-    @media print { body { background: white !important; color: black !important; } .sidebar, .top-toolbar, .no-print, .report-module-grid, .report-center-header { display: none !important; } .report-shell { display: block !important; } .main-area { padding: 0 !important; } .report-paper { border: none !important; box-shadow: none !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; } .summary-box, .chart-card, .recommendation-card { box-shadow: none !important; border: 1px solid #ccc !important; break-inside: avoid; } .report-letterhead { border-bottom: 2px solid #000 !important; } .report-title, .chart-title, .recommendation-title { color: black !important; } .table th { background: #eeeeee !important; color: black !important; } .table td { color: black !important; } .chart-layout { grid-template-columns: 1fr !important; } .recommendation-grid { grid-template-columns: 1fr 1fr 1fr !important; } @page { size: A4 landscape; margin: 12mm; } }
+    @media print { body { background: white !important; color: black !important; } .sidebar, .top-toolbar, .page-header, .no-print, .report-module-grid, .report-center-header { display: none !important; } .report-shell { display: block !important; } .main-area { padding: 0 !important; } .report-paper { border: none !important; box-shadow: none !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; } .summary-box, .chart-card, .recommendation-card { box-shadow: none !important; border: 1px solid #ccc !important; break-inside: avoid; } .report-letterhead { border-bottom: 2px solid #000 !important; } .report-title, .chart-title, .recommendation-title { color: black !important; } .table th { background: #eeeeee !important; color: black !important; } .table td { color: black !important; } .chart-layout { grid-template-columns: 1fr !important; } .recommendation-grid { grid-template-columns: 1fr 1fr 1fr !important; } @page { size: A4 landscape; margin: 12mm; } }
   </style>
 </head>
 <body>
 <div id="app" class="report-shell">
 
-  <aside class="sidebar no-print">
-    <div class="brand-row">
-      <div class="brand-icon">📊</div>
-      <div><div class="brand-title">ClinicDesk</div><div class="brand-subtitle">Nurse Report Center</div></div>
-    </div>
-    <div class="side-card">
-      <div class="side-label">Prepared By</div>
-      <div class="prepared-name">{{ nurseName }}</div>
-      <p class="prepared-role">{{ activeRole || "ClinicDesk User" }}</p>
-    </div>
-    <div class="side-actions">
-      <button class="btn-main" @click="printReport">Print Consolidated Report</button>
-      <button class="btn-soft" @click="loadRecords">Refresh Student Data</button>
-      <button class="btn-soft" @click="resetFilters">Reset Filters</button>
-      <a href="nurse-dashboard.php" class="btn-soft">Back to Dashboard</a>
-    </div>
-  </aside>
-
   <main class="main-area">
-    <div class="top-toolbar no-print">
-      <div>
-        <div class="toolbar-kicker">Government School Profile Reports</div>
-        <h1 class="toolbar-title">Nurse Report Center</h1>
-        <p class="toolbar-subtitle">Consolidated report from all saved boxes – with nutritional status chart</p>
+    <div class="page-header no-print">
+      <div class="page-header-left">
+        <div class="page-header-icon">📊</div>
+        <div>
+          <div class="page-header-kicker">Government School Profile Reports</div>
+          <h1 class="page-header-title">Nurse Report Center</h1>
+          <p class="page-header-sub">Consolidated report from all saved boxes – with nutritional status chart</p>
+        </div>
       </div>
-      <div class="date-chip">{{ currentDate }}</div>
+
+      <div class="page-header-actions">
+        <div class="header-prepared">
+          <div class="header-prepared-label">Prepared By</div>
+          <div class="header-prepared-name">{{ nurseName }}</div>
+        </div>
+        <button class="btn-header" @click="printReport">🖨️ Print Report</button>
+        <button class="btn-header soft" @click="loadRecords">🔄 Refresh Data</button>
+        <button class="btn-header soft" @click="resetFilters">Reset Filters</button>
+        <a href="nurse-dashboard.php" class="btn-header soft">← Back</a>
+      </div>
     </div>
 
     <!-- Consolidated Report Section (Printable) -->

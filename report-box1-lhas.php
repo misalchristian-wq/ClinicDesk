@@ -140,6 +140,10 @@
       <p style="margin:4px 0 0; opacity:0.9;">Junior High School & Senior High School (Read‑Only)</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+      <select v-model="selectedSchoolYear" class="form-select" style="max-width:180px;border-radius:12px;font-weight:700;">
+        <option v-for="y in schoolYearOptions" :key="y" :value="y">{{ y }}</option>
+      </select>
+
       <button class="btn-refresh" @click="openLoadModal" :disabled="loading">📂 Load from Saved</button>
       <button class="btn-refresh" @click="loadAggregatedData" :disabled="loading">🔄 Load from Records</button>
       <button class="btn-refresh" @click="printForm" style="background:#f0fdfa; color:#0f766e;">🖨️ Print</button>
@@ -273,7 +277,8 @@ createApp({
       loading: false,
       message: "",
       messageType: "success",
-      schoolYear: "2021-2022",
+      selectedSchoolYear: "2021-2022",
+      schoolYearOptions: ["2021-2022"],
 
       referralOptions: [
         "School Clinic",
@@ -298,10 +303,27 @@ createApp({
   },
 
   mounted() {
+    this.loadSchoolYearOptions();
     this.loadModal = new bootstrap.Modal(document.getElementById('loadModal'));
   },
 
   methods: {
+    async loadSchoolYearOptions() {
+      try {
+        const res = await fetch('api/get_school_years.php?t=' + Date.now());
+        const data = await res.json();
+        if (data.success && Array.isArray(data.years) && data.years.length) {
+          this.schoolYearOptions = data.years.map(y => y.year_label);
+          // Default to the active year if present, else the first option.
+          if (data.active && this.schoolYearOptions.includes(data.active)) {
+            this.selectedSchoolYear = data.active;
+          } else if (!this.schoolYearOptions.includes(this.selectedSchoolYear)) {
+            this.selectedSchoolYear = this.schoolYearOptions[0];
+          }
+        }
+      } catch (e) { console.warn('Could not load school years', e); }
+    },
+
     lhasTotal(row) {
       if (!row) return 0;
       return Number(row.referredSchool || 0) +
@@ -313,7 +335,7 @@ createApp({
     async openLoadModal() {
       this.savedReportsLoading = true;
       try {
-        const res = await fetch('api/get_report_list.php?report_key=box1&cache_buster=' + Date.now());
+        const res = await fetch('api/get_report_list.php?report_key=box1&school_year=' + encodeURIComponent(this.selectedSchoolYear) + '&cache_buster=' + Date.now());
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         this.savedReports = data.success ? data.reports : [];
@@ -336,7 +358,7 @@ createApp({
     async loadAggregatedData() {
       this.loading = true;
       try {
-        const response = await fetch("api/get_box1_okd_lhas_report.php?cache_buster=" + Date.now());
+        const response = await fetch("api/get_box1_okd_lhas_report.php?school_year=" + encodeURIComponent(this.selectedSchoolYear) + "&cache_buster=" + Date.now());
         const result = await response.json();
         if (!result.success) throw new Error(result.message || "Failed to load aggregated data");
 

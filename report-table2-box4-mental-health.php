@@ -46,6 +46,10 @@
       <p style="margin:4px 0 0; opacity:0.9;">Guidance counseling, vulnerable groups, and teacher training</p>
     </div>
     <div class="d-flex gap-2">
+      <select v-model="selectedSchoolYear" class="form-select" style="max-width:180px;border-radius:12px;font-weight:700;">
+        <option v-for="y in schoolYearOptions" :key="y" :value="y">{{ y }}</option>
+      </select>
+
       <button class="btn-refresh" @click="openLoadModal" :disabled="saving">📂 Load from Saved</button>
       <button class="btn-refresh" @click="loadAggregatedData" :disabled="loading">🔄 Load from Records</button>
       <button class="btn-save" @click="saveData" :disabled="saving">{{ saving ? 'Saving...' : '💾 Save' }}</button>
@@ -163,6 +167,8 @@ const { createApp } = Vue;
 createApp({
   data() {
     return {
+      selectedSchoolYear: "2021-2022",
+      schoolYearOptions: ["2021-2022"],
       topics: [
         { key: 'bullying', label: 'Bullying' },
         { key: 'mentalHealth', label: 'Mental Health/Psychosocial Issues' },
@@ -190,13 +196,30 @@ createApp({
     };
   },
   mounted() {
+    this.loadSchoolYearOptions();
     this.loadModal = new bootstrap.Modal(document.getElementById('loadModal'));
   },
   methods: {
+    async loadSchoolYearOptions() {
+      try {
+        const res = await fetch('api/get_school_years.php?t=' + Date.now());
+        const data = await res.json();
+        if (data.success && Array.isArray(data.years) && data.years.length) {
+          this.schoolYearOptions = data.years.map(y => y.year_label);
+          // Default to the active year if present, else the first option.
+          if (data.active && this.schoolYearOptions.includes(data.active)) {
+            this.selectedSchoolYear = data.active;
+          } else if (!this.schoolYearOptions.includes(this.selectedSchoolYear)) {
+            this.selectedSchoolYear = this.schoolYearOptions[0];
+          }
+        }
+      } catch (e) { console.warn('Could not load school years', e); }
+    },
+
     async openLoadModal() {
       this.savedReportsLoading = true;
       try {
-        const res = await fetch('api/get_report_list.php?report_key=box4&cache_buster=' + Date.now());
+        const res = await fetch('api/get_report_list.php?report_key=box4&school_year=' + encodeURIComponent(this.selectedSchoolYear) + '&cache_buster=' + Date.now());
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         this.savedReports = data.success ? data.reports : [];
@@ -236,7 +259,7 @@ createApp({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             report_key: 'box4',
-            school_year: '2021-2022',
+            school_year: this.selectedSchoolYear,
             saved_by: localStorage.getItem('local_full_name') || 'Clinic Nurse',
             report_data: this.formData
           })

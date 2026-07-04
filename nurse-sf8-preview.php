@@ -116,7 +116,7 @@
           Approve and Save
         </button>
 
-        <button class="btn btn-danger" @click="rejectUpload" :disabled="loading">
+        <button class="btn btn-danger" @click="openRejectModal" :disabled="loading">
           Reject
         </button>
       </div>
@@ -173,6 +173,60 @@
     </div>
   </div>
 
+  <!-- SUCCESS MODAL -->
+  <div class="modal fade" id="successModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title fw-bold">
+            <i class="bi bi-check-circle-fill me-2"></i>Success
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">{{ successMessage }}</p>
+          <div v-if="successDetails" class="alert alert-secondary mt-2 small mb-0">
+            {{ successDetails }}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-success" data-bs-dismiss="modal">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REJECT REASON MODAL -->
+  <div class="modal fade" id="rejectModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title fw-bold">
+            <i class="bi bi-x-circle-fill me-2"></i>Reject Upload
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label fw-semibold">Reason for rejection</label>
+          <textarea
+            v-model="rejectReason"
+            class="form-control"
+            rows="3"
+            placeholder="Enter the reason this file is being rejected..."></textarea>
+          <div v-if="!rejectReason.trim()" class="text-danger small mt-1">
+            A reason is required.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" @click="confirmReject" :disabled="!rejectReason.trim()">
+            Confirm Reject
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -195,6 +249,14 @@ createApp({
       errorMessage: "",
       errorDetails: "",
       errorModal: null,
+
+      // Success + reject modals
+      successMessage: "",
+      successDetails: "",
+      successModal: null,
+      successRedirect: false,
+      rejectReason: "Invalid or incomplete file.",
+      rejectModal: null,
 
       labels: {
         students_information: "Nutritional Status (SF8)",
@@ -332,6 +394,20 @@ createApp({
     if (modalElement) {
       this.errorModal = new bootstrap.Modal(modalElement);
     }
+    const successEl = document.getElementById("successModal");
+    if (successEl) {
+      this.successModal = new bootstrap.Modal(successEl);
+      // If this success should redirect, do it when the modal is dismissed.
+      successEl.addEventListener("hidden.bs.modal", () => {
+        if (this.successRedirect) {
+          window.location.href = "nurse-sf8-uploads.php";
+        }
+      });
+    }
+    const rejectEl = document.getElementById("rejectModal");
+    if (rejectEl) {
+      this.rejectModal = new bootstrap.Modal(rejectEl);
+    }
   },
 
   methods: {
@@ -378,6 +454,7 @@ createApp({
     },
 
     async approveUpload() {
+      this.loading = true;
       try {
         const response = await fetch("api/approve_sf8_upload.php", {
           method: "POST",
@@ -391,32 +468,51 @@ createApp({
         const data = await response.json();
 
         if (data.success) {
-          alert(data.message);
-          window.location.href = "nurse-sf8-uploads.php";
-        } else {
-          // Show modal instead of alert
-          this.errorMessage = data.message || "Approval failed. Please check the file and try again.";
-          this.errorDetails = data.details || "";
-          if (this.errorModal) {
-            this.errorModal.show();
+          this.successMessage = data.message || "Upload approved and student records saved.";
+          // If the server reported how many were new vs skipped, show it.
+          if (data.details) {
+            const d = data.details;
+            this.successDetails =
+              `New records saved: ${d.new_records ?? "-"}. ` +
+              `Skipped (already existed this school year): ${d.skipped_existing ?? 0}. ` +
+              `Skipped (duplicate in file): ${d.skipped_in_file ?? 0}.`;
           } else {
-            alert(this.errorMessage);
+            this.successDetails = "";
           }
+          this.successRedirect = true;
+          if (this.successModal) {
+            this.successModal.show();
+          } else {
+            window.location.href = "nurse-sf8-uploads.php";
+          }
+        } else {
+          this.errorMessage = data.message || "Approval failed. Please check the file and try again.";
+          this.errorDetails = data.details
+            ? (typeof data.details === "string" ? data.details : JSON.stringify(data.details))
+            : "";
+          if (this.errorModal) this.errorModal.show();
         }
       } catch (error) {
         console.error(error);
         this.errorMessage = "Server error while approving upload: " + error.message;
-        if (this.errorModal) {
-          this.errorModal.show();
-        } else {
-          alert(this.errorMessage);
-        }
+        this.errorDetails = "";
+        if (this.errorModal) this.errorModal.show();
       }
+      this.loading = false;
     },
 
-    async rejectUpload() {
-      const reason = prompt("Enter rejection reason:", "Invalid or incomplete file.");
-      if (reason === null) return;
+    openRejectModal() {
+      this.rejectReason = "Invalid or incomplete file.";
+      if (this.rejectModal) this.rejectModal.show();
+    },
+
+    async confirmReject() {
+      const reason = (this.rejectReason || "").trim();
+      if (!reason) {
+        // Keep the modal open; show a small inline note handled in template.
+        return;
+      }
+      if (this.rejectModal) this.rejectModal.hide();
 
       this.loading = true;
       try {
@@ -433,16 +529,20 @@ createApp({
         const result = await response.json();
 
         if (result.success) {
-          this.messageType = "success";
-          this.message = result.message;
+          this.successMessage = result.message || "Upload rejected.";
+          this.successDetails = "";
+          this.successRedirect = false;
+          if (this.successModal) this.successModal.show();
           this.loadPreview();
         } else {
-          this.messageType = "error";
-          this.message = result.message || "Rejection failed.";
+          this.errorMessage = result.message || "Rejection failed.";
+          this.errorDetails = "";
+          if (this.errorModal) this.errorModal.show();
         }
       } catch (error) {
-        this.messageType = "error";
-        this.message = "Error: " + error.message;
+        this.errorMessage = "Error: " + error.message;
+        this.errorDetails = "";
+        if (this.errorModal) this.errorModal.show();
       }
       this.loading = false;
     }

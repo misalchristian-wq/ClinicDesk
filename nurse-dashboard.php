@@ -429,6 +429,24 @@
         <a href="model-comparison.php" class="btn btn-outline-clinic w-100 mt-auto">Open Comparison</a>
     </div>
 </div>
+
+    <div class="col-md-6 col-lg-4">
+    <div class="dashboard-card">
+        <div class="card-icon">⚙️</div>
+        <h4>School Year Settings</h4>
+        <p>Set the valid school years and choose the active one used as the default for SF8 uploads and reports.</p>
+        <a href="nurse-school-years.php" class="btn btn-green w-100 mt-auto">Manage School Years</a>
+    </div>
+</div>
+
+    <div class="col-md-6 col-lg-4">
+    <div class="dashboard-card">
+        <div class="card-icon">📈</div>
+        <h4>Health Analytics</h4>
+        <p>Consolidated risk, BMI, and height-for-age summary with section breakdown and PDF export.</p>
+        <a href="health-analytics.php" class="btn btn-outline-blue w-100 mt-auto">View Analytics</a>
+    </div>
+</div>
   </div>
 
 </div>

@@ -128,7 +128,7 @@
 
     .layout-grid {
       display: grid;
-      grid-template-columns: 0.9fr 1.1fr;
+      grid-template-columns: 0.8fr 1.4fr;
       gap: 24px;
       align-items: start;
     }
@@ -439,6 +439,24 @@
         font-size: 30px;
       }
     }
+    .file-status-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+    .file-status-item {
+      border: 1px solid var(--clinic-border, #d9eef0); border-radius: 14px;
+      padding: 14px 16px; background: #fbfefe;
+    }
+    .file-status-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .file-status-name { font-weight: 700; word-break: break-all; }
+    .fs-badge { border-radius: 30px; padding: 4px 12px; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.4px; }
+    .fs-valid { background: #ccf0e0; color: #115e42; }
+    .fs-invalid { background: #ffe0e0; color: #a12020; }
+    .fs-uploading { background: #fff3cd; color: #856404; }
+    .fs-uploaded { background: #d4f0fc; color: #0c5e7e; }
+    .fs-failed { background: #ffe0e0; color: #a12020; }
+    .fs-error-text { color: #a12020; font-size: 0.85rem; margin-top: 6px; }
+    .fs-meta { font-size: 0.8rem; color: #6b7d87; margin-top: 4px; }
+    .fs-remove { border: none; background: transparent; color: #a12020; font-weight: 700; cursor: pointer; font-size: 0.85rem; }
+    .mini-preview { margin-top: 10px; max-height: 220px; overflow: auto; border: 1px solid var(--clinic-border, #d9eef0); border-radius: 10px; }
+    .mini-preview table { font-size: 0.72rem; margin: 0; }
   </style>
 </head>
 
@@ -469,101 +487,129 @@
   </div>
 
   <div class="layout-grid">
+
+    <!-- LEFT: controls -->
     <div class="card p-4 upload-card">
-      <h4 class="fw-bold mb-3">Select SF8 Excel File</h4>
-
-      <div class="step-list">
-        <div class="step-item">
-          <div class="step-number">1</div>
-          <div>
-            <strong>Select file</strong>
-            <p>Choose the official SF8 `.xlsx` file from your device.</p>
-          </div>
-        </div>
-
-        <div class="step-item">
-          <div class="step-number">2</div>
-          <div>
-            <strong>Read purpose</strong>
-            <p>ClinicDesk will read cell A1 to detect the report type.</p>
-          </div>
-        </div>
-
-        <div class="step-item">
-          <div class="step-number">3</div>
-          <div>
-            <strong>Submit to clinic</strong>
-            <p>The clinic nurse will review, approve, or reject your uploaded file.</p>
-          </div>
-        </div>
-      </div>
+      <h4 class="fw-bold mb-3">Upload SF8 Files</h4>
 
       <div class="upload-zone">
         <div class="upload-icon">📄</div>
+        <label class="form-label fw-semibold">Choose `.xlsx` files</label>
+        <input type="file" class="form-control" accept=".xlsx" multiple @change="handleFiles">
+      </div>
 
-        <label class="form-label fw-semibold">Upload `.xlsx` file</label>
-        <input type="file" class="form-control" accept=".xlsx" @change="handleFile">
-
-        <div v-if="selectedFile" class="file-pill">
-          <span>✓</span>
+      <div class="step-list mt-3">
+        <div class="step-item">
+          <div class="step-number">1</div>
           <div>
-            <strong>{{ selectedFile.name }}</strong>
-            <div class="small-note mb-0">Ready for preview and submission</div>
+            <strong>Select files</strong>
+            <p>Choose one or more SF8 `.xlsx` files. You can add more anytime.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div>
+            <strong>Auto-check</strong>
+            <p>ClinicDesk reads cell A1 and the school year, flagging problems per file.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div>
+            <strong>Submit valid files</strong>
+            <p>Only valid files are submitted. Errored files are skipped.</p>
           </div>
         </div>
       </div>
 
       <div class="alert alert-info">
-        <strong>Reminder:</strong> Put the report purpose dropdown/code in <strong>cell A1</strong>.
+        <strong>Reminder:</strong> Put the report purpose/code in <strong>cell A1</strong>.
+        The school year is read from each file and must match the active year set by the clinic nurse.
+      </div>
+
+      <!-- Summary tally -->
+      <div v-if="files.length > 0" class="d-flex gap-2 flex-wrap mb-3">
+        <span class="fs-badge fs-valid">Valid: {{ validCount }}</span>
+        <span class="fs-badge fs-invalid">Errors: {{ invalidCount }}</span>
+        <span class="fs-badge fs-uploaded" v-if="uploadedCount > 0">Submitted: {{ uploadedCount }}</span>
+        <span class="fs-badge fs-failed" v-if="failedCount > 0">Failed: {{ failedCount }}</span>
       </div>
 
       <button
         class="btn btn-green w-100"
-        :disabled="!selectedFile || previewRows.length === 0 || !reportCode || uploading"
+        :disabled="validCount === 0 || uploading"
         data-bs-toggle="modal"
         data-bs-target="#confirmModal">
-        {{ uploading ? "Uploading..." : "Submit to Clinic Nurse" }}
+        {{ uploading
+            ? "Uploading..."
+            : (validCount > 0
+                ? "Submit " + validCount + " valid file" + (validCount > 1 ? "s" : "") + " to Clinic Nurse"
+                : "No valid files to submit") }}
       </button>
     </div>
 
+    <!-- RIGHT: file list with previews together -->
     <div class="card p-4 preview-card">
       <div class="preview-header">
         <div>
-          <h4 class="fw-bold mb-1">Excel Preview</h4>
+          <h4 class="fw-bold mb-1">Selected Files &amp; Preview</h4>
           <p class="small-note mb-0">
-            Preview shows the first 40 rows from the selected sheet.
+            Each file shows its status and a preview of its contents.
           </p>
         </div>
-
-        <span class="purpose-badge" v-if="reportCode">
-          {{ reportCode }}
-        </span>
-
-        <span class="preview-badge" v-if="previewRows.length > 0">
-          {{ previewRows.length }} preview rows
+        <span class="preview-badge" v-if="files.length > 0">
+          {{ files.length }} file{{ files.length > 1 ? "s" : "" }}
         </span>
       </div>
 
-      <div v-if="previewRows.length === 0" class="empty-preview">
+      <div v-if="files.length === 0" class="empty-preview">
         <div class="empty-icon">📋</div>
-        <h5 class="fw-bold">No preview available yet</h5>
-        <p class="mb-0">
-          Select an SF8 Excel file to generate a preview before submission.
-        </p>
+        <h5 class="fw-bold">No files selected yet</h5>
+        <p class="mb-0">Select one or more SF8 Excel files from the panel on the left.</p>
       </div>
 
-      <div class="table-responsive" v-if="previewRows.length > 0">
-        <table class="table table-bordered table-sm">
-          <tbody>
-            <tr v-for="(row, rowIndex) in previewRows" :key="rowIndex">
-              <td v-for="(cell, cellIndex) in row" :key="cellIndex">
-                {{ cell }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div v-else class="file-status-list">
+        <div v-for="f in files" :key="f.id" class="file-status-item">
+          <div class="file-status-head">
+            <span class="file-status-name">{{ f.name }}</span>
+            <span class="fs-badge" :class="{
+              'fs-valid': f.status === 'valid',
+              'fs-invalid': f.status === 'invalid',
+              'fs-uploading': f.status === 'uploading',
+              'fs-uploaded': f.status === 'uploaded',
+              'fs-failed': f.status === 'failed'
+            }">{{ statusLabel(f.status) }}</span>
+          </div>
+
+          <div v-if="f.reportCode" class="fs-meta">
+            Type: <strong>{{ f.reportCode }}</strong>
+            <span v-if="f.schoolYear"> · School Year: <strong>{{ f.schoolYear }}</strong></span>
+          </div>
+
+          <div v-if="f.error" class="fs-error-text">
+            ⚠ {{ f.error }}
+          </div>
+
+          <!-- Inline preview per file -->
+          <div v-if="f.previewRows.length > 0" class="mini-preview">
+            <table class="table table-bordered table-sm">
+              <tbody>
+                <tr v-for="(row, ri) in f.previewRows.slice(0, 10)" :key="ri">
+                  <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-2">
+            <button class="fs-remove" @click="removeFile(f.id)" :disabled="uploading">
+              Remove
+            </button>
+          </div>
+        </div>
       </div>
     </div>
+
   </div>
 
   <div class="modal fade" id="confirmModal" tabindex="-1">
@@ -575,12 +621,15 @@
         </div>
 
         <div class="modal-body">
-          Are you sure you want to submit this file as <strong>{{ reportCode }}</strong> to the clinic nurse for review?
+          <p>You are about to submit <strong>{{ validCount }}</strong> valid file{{ validCount > 1 ? "s" : "" }} to the clinic nurse.</p>
+          <p v-if="invalidCount > 0" class="text-danger mb-0">
+            {{ invalidCount }} file{{ invalidCount > 1 ? "s" : "" }} with errors will be skipped.
+          </p>
         </div>
 
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-green" data-bs-dismiss="modal" @click="uploadToCloudinary">
+          <button type="button" class="btn btn-green" data-bs-dismiss="modal" @click="submitValidFiles">
             Yes, Submit
           </button>
         </div>
@@ -603,12 +652,10 @@ createApp({
       cloudName: "du3qpurjj",
       uploadPreset: "atansproject-prod-unsigned",
 
-      selectedFile: null,
-      previewRows: [],
-      extractedRows: [],
-      reportCode: "",
-      reportPurpose: "",
+      files: [],              // per-file objects (see makeFileEntry)
+      nextFileId: 1,
 
+      activeSchoolYear: "",   // set by the clinic nurse
       uploading: false,
       message: "",
       messageType: "success",
@@ -631,6 +678,13 @@ createApp({
     };
   },
 
+  computed: {
+    validCount()    { return this.files.filter(f => f.status === "valid").length; },
+    invalidCount()  { return this.files.filter(f => f.status === "invalid").length; },
+    uploadedCount() { return this.files.filter(f => f.status === "uploaded").length; },
+    failedCount()   { return this.files.filter(f => f.status === "failed").length; }
+  },
+
   mounted() {
     const activeRole = localStorage.getItem("active_role");
     const token = localStorage.getItem("teacher_id_token");
@@ -638,6 +692,8 @@ createApp({
     if (activeRole !== "Teacher" || !token) {
       window.location.href = "login.php";
     }
+
+    this.loadActiveSchoolYear();
   },
 
   methods: {
@@ -646,56 +702,87 @@ createApp({
       this.message = text;
     },
 
+    statusLabel(status) {
+      return {
+        valid: "Valid",
+        invalid: "Error",
+        uploading: "Uploading...",
+        uploaded: "Submitted",
+        failed: "Failed"
+      }[status] || status;
+    },
+
+    async loadActiveSchoolYear() {
+      try {
+        const res = await fetch("api/get_school_years.php?t=" + Date.now());
+        const data = await res.json();
+        if (data.success && data.active) {
+          this.activeSchoolYear = data.active;
+        }
+      } catch (e) {
+        console.warn("Could not load active school year", e);
+      }
+    },
+
     excelDateToYMD(value) {
       if (!value) return "";
-
-      if (typeof value === "string") {
-        return value;
-      }
-
+      if (typeof value === "string") return value;
       const excelEpoch = new Date(Date.UTC(1899, 11, 30));
       const convertedDate = new Date(excelEpoch.getTime() + value * 86400000);
-
       const year = convertedDate.getUTCFullYear();
       const month = String(convertedDate.getUTCMonth() + 1).padStart(2, "0");
       const day = String(convertedDate.getUTCDate()).padStart(2, "0");
-
       return `${year}-${month}-${day}`;
     },
 
     normalizeYesNo(value) {
       if (value === "" || value === null || value === undefined) return 0;
-
       const text = String(value).trim().toLowerCase();
-
       if (text === "1" || text === "yes" || text === "y") return 1;
       if (text === "0" || text === "no" || text === "n") return 0;
-
       return 0;
     },
 
-    handleFile(event) {
-      const file = event.target.files[0];
-
-      this.message = "";
-      this.previewRows = [];
-      this.extractedRows = [];
-      this.reportCode = "";
-      this.reportPurpose = "";
-
-      if (!file) return;
-
-      if (!file.name.toLowerCase().endsWith(".xlsx")) {
-        this.showMessage("error", "Only .xlsx files are allowed.");
-        event.target.value = "";
-        return;
-      }
-
-      this.selectedFile = file;
-      this.readExcelPreview(file);
+    makeFileEntry(file) {
+      return {
+        id: this.nextFileId++,
+        file: file,
+        name: file.name,
+        status: "parsing",   // parsing | valid | invalid | uploading | uploaded | failed
+        error: "",
+        reportCode: "",
+        reportPurpose: "",
+        schoolYear: "",
+        previewRows: [],
+        extractedRows: []
+      };
     },
 
-    readExcelPreview(file) {
+    handleFiles(event) {
+      this.message = "";
+      const picked = Array.from(event.target.files || []);
+      event.target.value = ""; // allow re-selecting the same file later
+
+      for (const file of picked) {
+        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+          const bad = this.makeFileEntry(file);
+          bad.status = "invalid";
+          bad.error = "Only .xlsx files are allowed.";
+          this.files.push(bad);
+          continue;
+        }
+        const entry = this.makeFileEntry(file);
+        this.files.push(entry);
+        this.parseFile(entry);
+      }
+    },
+
+    removeFile(id) {
+      this.files = this.files.filter(f => f.id !== id);
+    },
+
+    // Parses one file, sets status valid/invalid with a specific error.
+    parseFile(entry) {
       const reader = new FileReader();
 
       reader.onload = (e) => {
@@ -708,169 +795,199 @@ createApp({
             : workbook.SheetNames[0];
 
           const worksheet = workbook.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: true });
 
-          const rows = XLSX.utils.sheet_to_json(worksheet, {
-            header: 1,
-            defval: "",
-            raw: true
-          });
-
+          // A1 = report purpose/code
           const detectedPurpose = rows[0]?.[0] ? String(rows[0][0]).trim() : "";
-          console.log("A1 detected purpose:", detectedPurpose);
-
           if (!detectedPurpose) {
-            this.showMessage("error", "Cell A1 is empty. Please put report purpose/code in A1.");
-            return;
+            return this.failFile(entry, "Cell A1 is empty. Put the report purpose/code in A1.");
           }
-
           if (!this.allowedPurposes[detectedPurpose]) {
-            this.showMessage("error", "Invalid A1 report purpose/code: " + detectedPurpose);
-            return;
+            return this.failFile(entry, `Invalid A1 report purpose/code: "${detectedPurpose}".`);
           }
 
-          this.reportPurpose = detectedPurpose;
-          this.reportCode = this.allowedPurposes[detectedPurpose];
+          entry.reportPurpose = detectedPurpose;
+          entry.reportCode = this.allowedPurposes[detectedPurpose];
+          entry.previewRows = rows.slice(0, 40);
 
-          this.previewRows = rows.slice(0, 40);
+          // School year (row 7, next to the "School Year" label)
+          const syResult = this.readSchoolYear(rows);
+          if (syResult.error) {
+            return this.failFile(entry, syResult.error, entry.reportCode);
+          }
+          entry.schoolYear = syResult.year;
 
-          if (this.reportCode === "deworming_wifa") {
-            this.fetchDewormingWifaData(rows);
-          } else {
-            this.showMessage("success", "Excel detected as: " + this.reportCode);
+          // Deworming files carry structured rows.
+          if (entry.reportCode === "deworming_wifa") {
+            entry.extractedRows = this.parseDewormingWifa(rows);
           }
 
+          entry.status = "valid";
+          entry.error = "";
         } catch (error) {
-          this.showMessage("error", "Unable to read Excel file: " + error.message);
+          this.failFile(entry, "Unable to read Excel file: " + error.message);
         }
       };
 
-      reader.readAsArrayBuffer(file);
+      reader.onerror = () => this.failFile(entry, "Could not read the file from disk.");
+      reader.readAsArrayBuffer(entry.file);
     },
 
-    fetchDewormingWifaData(rows) {
-      const dataRows = rows.slice(10);
-
-      this.extractedRows = dataRows
-        .filter(row => row[0] && row[2])
-        .map(row => {
-          return {
-            row_no: row[0] || "",
-            learner_name: row[2] || "",
-            gender: row[6] || "",
-            birthdate: this.excelDateToYMD(row[7]),
-            age: row[8] || "",
-            dewormed_sbfp: this.normalizeYesNo(row[9]),
-            dewormed_other: this.normalizeYesNo(row[10]),
-            wifa: this.normalizeYesNo(row[11]),
-            wifa_date: this.excelDateToYMD(row[12]),
-            remarks: row[13] || ""
-          };
-        });
-
-      console.log("Fetched Deworming & WIFA data:", this.extractedRows);
-
-      this.showMessage(
-        "success",
-        "Deworming & WIFA file detected. " + this.extractedRows.length + " student rows fetched."
-      );
+    failFile(entry, message, keepCode) {
+      entry.status = "invalid";
+      entry.error = message;
+      if (!keepCode) entry.reportCode = "";
+      entry.schoolYear = "";
+      entry.extractedRows = [];
     },
 
-    async uploadToCloudinary() {
-      if (!this.selectedFile) {
-        this.showMessage("error", "Please select an Excel file first.");
-        return;
+    // Returns { year } or { error }.
+    readSchoolYear(rows) {
+      const row7 = rows[6] || [];
+      let rawValue = "";
+      for (let i = 0; i < row7.length; i++) {
+        const cell = row7[i];
+        if (typeof cell === "string" && cell.toLowerCase().includes("school year")) {
+          for (let j = i + 1; j < row7.length; j++) {
+            if (row7[j] !== "" && row7[j] !== null && row7[j] !== undefined) {
+              rawValue = String(row7[j]).trim();
+              break;
+            }
+          }
+          break;
+        }
       }
 
-      if (!this.reportCode) {
-        this.showMessage("error", "Missing report code. Please check cell A1.");
+      if (!rawValue) {
+        return { error: 'No school year found in the file (row 7, next to "School Year").' };
+      }
+      if (!/^\d{4}-\d{4}$/.test(rawValue)) {
+        return { error: `Invalid school year format: "${rawValue}". It must be YYYY-YYYY (e.g. 2024-2025).` };
+      }
+      if (!this.activeSchoolYear) {
+        return { error: "No active school year has been set by the clinic nurse." };
+      }
+      if (rawValue !== this.activeSchoolYear) {
+        return { error: `School year (${rawValue}) does not match the active year (${this.activeSchoolYear}) set by the clinic nurse.` };
+      }
+      return { year: rawValue };
+    },
+
+    parseDewormingWifa(rows) {
+      const dataRows = rows.slice(10);
+      return dataRows
+        .filter(row => row[0] && row[2])
+        .map(row => ({
+          row_no: row[0] || "",
+          learner_name: row[2] || "",
+          gender: row[6] || "",
+          birthdate: this.excelDateToYMD(row[7]),
+          age: row[8] || "",
+          dewormed_sbfp: this.normalizeYesNo(row[9]),
+          dewormed_other: this.normalizeYesNo(row[10]),
+          wifa: this.normalizeYesNo(row[11]),
+          wifa_date: this.excelDateToYMD(row[12]),
+          remarks: row[13] || ""
+        }));
+    },
+
+    // Uploads every valid file in sequence; errored files are skipped.
+    async submitValidFiles() {
+      const toUpload = this.files.filter(f => f.status === "valid");
+      if (toUpload.length === 0) {
+        this.showMessage("error", "No valid files to submit.");
         return;
       }
 
       this.uploading = true;
       this.message = "";
 
+      let ok = 0, fail = 0;
+      for (const entry of toUpload) {
+        const result = await this.uploadOne(entry);
+        if (result) ok++; else fail++;
+      }
+
+      this.uploading = false;
+
+      if (fail === 0) {
+        this.showMessage("success", `${ok} file${ok > 1 ? "s" : ""} submitted successfully. Waiting for clinic nurse approval.`);
+      } else {
+        this.showMessage("error", `${ok} submitted, ${fail} failed. See each file's status below for details.`);
+      }
+    },
+
+    // Uploads a single file. Returns true on success, false on failure.
+    async uploadOne(entry) {
+      entry.status = "uploading";
+      entry.error = "";
+
       try {
         const formData = new FormData();
-        formData.append("file", this.selectedFile);
+        formData.append("file", entry.file);
         formData.append("upload_preset", this.uploadPreset);
 
         const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${this.cloudName}/raw/upload`;
-
-        const cloudResponse = await fetch(cloudinaryUrl, {
-          method: "POST",
-          body: formData
-        });
-
+        const cloudResponse = await fetch(cloudinaryUrl, { method: "POST", body: formData });
         const cloudText = await cloudResponse.text();
-        console.log("Cloudinary raw response:", cloudText);
 
         let cloudResult;
-
         try {
           cloudResult = JSON.parse(cloudText);
         } catch (jsonError) {
-          this.showMessage("error", "Cloudinary did not return JSON. Check console.");
-          this.uploading = false;
-          return;
+          entry.status = "failed";
+          entry.error = "Cloudinary did not return JSON.";
+          return false;
         }
 
         if (!cloudResponse.ok || cloudResult.error) {
-          this.showMessage(
-            "error",
-            "Cloudinary upload failed: " + (cloudResult.error?.message || "Unknown error")
-          );
-          this.uploading = false;
-          return;
+          entry.status = "failed";
+          entry.error = "Cloudinary upload failed: " + (cloudResult.error?.message || "Unknown error");
+          return false;
         }
 
         const teacherEmail = localStorage.getItem("teacher_email") || "Unknown Teacher";
 
         const saveResponse = await fetch("api/save_sf8_upload.php", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            file_name: this.selectedFile.name,
+            file_name: entry.name,
             file_type: "xlsx",
-            report_purpose: this.reportPurpose,
-            report_code: this.reportCode,
+            report_purpose: entry.reportPurpose,
+            report_code: entry.reportCode,
             cloudinary_public_id: cloudResult.public_id,
             cloudinary_url: cloudResult.secure_url,
             uploaded_by_email: teacherEmail,
-            extracted_rows: this.extractedRows
+            school_year: entry.schoolYear,
+            extracted_rows: entry.extractedRows
           })
         });
 
         const saveText = await saveResponse.text();
-        console.log("Save upload raw response:", saveText);
-
         let saveResult;
-
         try {
           saveResult = JSON.parse(saveText);
         } catch (jsonError) {
-          this.showMessage("error", "Save upload PHP did not return JSON. Check console.");
-          this.uploading = false;
-          return;
+          entry.status = "failed";
+          entry.error = "Save endpoint did not return JSON.";
+          return false;
         }
 
         if (saveResult.success) {
-          this.showMessage("success", "File submitted successfully. Waiting for clinic nurse approval.");
-          this.selectedFile = null;
-          this.previewRows = [];
-          this.extractedRows = [];
-          this.reportCode = "";
-          this.reportPurpose = "";
+          entry.status = "uploaded";
+          entry.error = "";
+          return true;
         } else {
-          this.showMessage("error", saveResult.message || "Failed to save upload.");
+          entry.status = "failed";
+          entry.error = saveResult.message || "Failed to save upload.";
+          return false;
         }
-
       } catch (error) {
-        this.showMessage("error", "Error: " + error.message);
+        entry.status = "failed";
+        entry.error = "Error: " + error.message;
+        return false;
       }
-
-      this.uploading = false;
     }
   }
 }).mount("#app");

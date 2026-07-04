@@ -50,12 +50,8 @@
       <p style="margin:4px 0 0; opacity:0.9;">Adolescent Reproductive Health and Comprehensive Tobacco Control – Read‑Only</p>
     </div>
     <div class="d-flex gap-2 flex-wrap align-items-center">
-      <select v-model="selectedSchoolYear" class="form-select school-year-select">
-        <option value="2021-2022">2021-2022</option>
-        <option value="2022-2023">2022-2023</option>
-        <option value="2023-2024">2023-2024</option>
-        <option value="2025-2026">2025-2026</option>
-        <option value="2027-2028">2027-2028</option>
+      <select v-model="selectedSchoolYear" class="form-select school-year-select" @change="openLoadModal">
+        <option v-for="y in schoolYearOptions" :key="y" :value="y">{{ y }}</option>
       </select>
       <button class="btn-refresh" @click="openLoadModal" :disabled="loading">📂 Load from Saved</button>
       <button class="btn-refresh" @click="loadBox5Box6Data" :disabled="loading">🔄 Load from Records</button>
@@ -196,6 +192,7 @@ createApp({
       grades: [7, 8, 9, 10, 11, 12],
       pregnancyStatuses: ["In School", "On Alternative Delivery Mode (ADM)"],
       selectedSchoolYear: "2021-2022",
+      schoolYearOptions: ["2021-2022"],
       formData: {
         pregnantLearners: {
           "In School": { g7: 0, g8: 0, g9: 0, g10: 0, g11: 0, g12: 0 },
@@ -220,10 +217,27 @@ createApp({
   },
 
   mounted() {
+    this.loadSchoolYearOptions();
     this.loadModal = new bootstrap.Modal(document.getElementById('loadModal'));
   },
 
   methods: {
+    async loadSchoolYearOptions() {
+      try {
+        const res = await fetch('api/get_school_years.php?t=' + Date.now());
+        const data = await res.json();
+        if (data.success && Array.isArray(data.years) && data.years.length) {
+          this.schoolYearOptions = data.years.map(y => y.year_label);
+          // Default to the active year if present, else the first option.
+          if (data.active && this.schoolYearOptions.includes(data.active)) {
+            this.selectedSchoolYear = data.active;
+          } else if (!this.schoolYearOptions.includes(this.selectedSchoolYear)) {
+            this.selectedSchoolYear = this.schoolYearOptions[0];
+          }
+        }
+      } catch (e) { console.warn('Could not load school years', e); }
+    },
+
     resetFetchedData() {
       this.pregnancyStatuses.forEach(status => {
         this.grades.forEach(g => { this.formData.pregnantLearners[status]["g" + g] = 0; });

@@ -261,7 +261,7 @@
 
     .chart-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, 1fr);
       gap: 24px;
       margin-bottom: 24px;
     }
@@ -442,6 +442,23 @@
         grid-template-columns: 1fr;
       }
     }
+    .cd-modal-overlay {
+      position: fixed; inset: 0; background: rgba(15, 50, 63, 0.45);
+      display: flex; align-items: flex-start; justify-content: center;
+      z-index: 1080; padding: 30px 16px; overflow-y: auto;
+    }
+    .cd-modal {
+      background: #fff; border-radius: 20px; width: 100%; max-width: 760px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.25); overflow: hidden; margin: auto;
+    }
+    .cd-modal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 24px; background: linear-gradient(135deg, var(--clinic-primary, #0f766e), var(--clinic-secondary, #14b8a6));
+      color: #fff;
+    }
+    .cd-modal-close { background: transparent; border: none; color: #fff; font-size: 1.6rem; line-height: 1; cursor: pointer; }
+    .cd-modal-body { padding: 22px 24px; max-height: 65vh; overflow-y: auto; }
+    .cd-modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid #e6f1f2; }
   </style>
 </head>
 
@@ -572,6 +589,13 @@
         <canvas id="bmiChart"></canvas>
       </div>
     </div>
+
+    <div class="card p-4">
+      <h4 class="fw-bold mb-3">Height-for-Age Overview</h4>
+      <div class="chart-box">
+        <canvas id="hfaChart"></canvas>
+      </div>
+    </div>
   </div>
 
   <div class="card p-4">
@@ -583,9 +607,14 @@
         </p>
       </div>
 
-      <button class="btn btn-green" @click="loadRecords">
-        Refresh
-      </button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-clinic" @click="openAddModal">
+          + Add Student
+        </button>
+        <button class="btn btn-green" @click="loadRecords">
+          Refresh
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="alert alert-info">
@@ -668,6 +697,109 @@
     </div>
   </div>
 
+  <!-- ADD STUDENT MODAL (Vue-controlled) -->
+  <div v-if="showAddModal" class="cd-modal-overlay" @click.self="closeAddModal">
+    <div class="cd-modal">
+      <div class="cd-modal-head">
+        <h5 class="fw-bold mb-0">Add Student Manually</h5>
+        <button class="cd-modal-close" @click="closeAddModal">&times;</button>
+      </div>
+
+      <div class="cd-modal-body">
+        <div v-if="addError" class="alert alert-danger py-2">{{ addError }}</div>
+
+        <div class="alert alert-info py-2">
+          Active School Year: <strong>{{ activeSchoolYear || "not set" }}</strong>.
+          BMI, BMI category, and height-for-age are computed automatically.
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">LRN <span class="text-danger">*</span></label>
+            <input v-model.trim="addForm.lrn" class="form-control" placeholder="12-digit LRN">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Learner's Name <span class="text-danger">*</span></label>
+            <input v-model.trim="addForm.learner_name" class="form-control" placeholder="Last, First, M.I.">
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Sex <span class="text-danger">*</span></label>
+            <select v-model="addForm.sex" class="form-select">
+              <option value="">Select</option>
+              <option>Male</option>
+              <option>Female</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Birthdate</label>
+            <input v-model="addForm.birthdate" type="date" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Age (years) <span class="text-danger">*</span></label>
+            <input v-model.number="addForm.age" type="number" min="5" max="19" class="form-control">
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">Weight (kg) <span class="text-danger">*</span></label>
+            <input v-model.number="addForm.weight_kg" type="number" step="0.01" min="0" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Height (m) <span class="text-danger">*</span></label>
+            <input v-model.number="addForm.height_m" type="number" step="0.001" min="0" class="form-control" placeholder="e.g. 1.52">
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">Grade Level</label>
+            <input v-model.trim="addForm.grade_level" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Section</label>
+            <input v-model.trim="addForm.section" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Track/Strand</label>
+            <input v-model.trim="addForm.track_strand" class="form-control">
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">School Name</label>
+            <input v-model.trim="addForm.school_name" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">School ID</label>
+            <input v-model.trim="addForm.school_id" class="form-control">
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">District</label>
+            <input v-model.trim="addForm.district" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Division</label>
+            <input v-model.trim="addForm.division" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Region</label>
+            <input v-model.trim="addForm.region" class="form-control">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">Remarks</label>
+            <input v-model.trim="addForm.remarks" class="form-control">
+          </div>
+        </div>
+      </div>
+
+      <div class="cd-modal-foot">
+        <button class="btn btn-outline-clinic" @click="closeAddModal" :disabled="addSaving">Cancel</button>
+        <button class="btn btn-green" @click="submitAddStudent" :disabled="addSaving">
+          {{ addSaving ? "Saving..." : "Save Student" }}
+        </button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -690,8 +822,20 @@ createApp({
       message: "",
       messageType: "success",
 
+      // Manual add-student modal
+      showAddModal: false,
+      addSaving: false,
+      addError: "",
+      activeSchoolYear: "",
+      addForm: {
+        lrn: "", learner_name: "", sex: "", birthdate: "", age: "",
+        weight_kg: "", height_m: "", grade_level: "", section: "", track_strand: "",
+        school_name: "", school_id: "", district: "", division: "", region: "", remarks: ""
+      },
+
       riskChart: null,
-      bmiChart: null
+      bmiChart: null,
+      hfaChart: null
     };
   },
 
@@ -757,6 +901,19 @@ createApp({
 
     obeseCount() {
       return this.filteredRecords.filter(record => String(record.bmi_category || "") === "Obese").length;
+    },
+
+    hfaCount() {
+      // Counts by height-for-age category (handles field-name variants).
+      const tally = { "Severely Stunted": 0, "Stunted": 0, "Normal": 0, "Tall": 0 };
+      this.filteredRecords.forEach(r => {
+        const h = String(this.getHeightForAge(r) || "").toLowerCase();
+        if (h.includes("severely")) tally["Severely Stunted"]++;
+        else if (h.includes("stunted")) tally["Stunted"]++;
+        else if (h.includes("tall")) tally["Tall"]++;
+        else if (h.includes("normal")) tally["Normal"]++;
+      });
+      return tally;
     }
   },
 
@@ -783,6 +940,7 @@ createApp({
     this.nurseName = localStorage.getItem("local_full_name") || "Clinic Nurse";
 
     this.loadRecords();
+    this.loadActiveSchoolYear();
   },
 
   methods: {
@@ -793,6 +951,75 @@ createApp({
       setTimeout(() => {
         this.message = "";
       }, 5000);
+    },
+
+    async loadActiveSchoolYear() {
+      try {
+        const res = await fetch("api/get_school_years.php?t=" + Date.now());
+        const data = await res.json();
+        if (data.success && data.active) this.activeSchoolYear = data.active;
+      } catch (e) {
+        console.warn("Could not load active school year", e);
+      }
+    },
+
+    resetAddForm() {
+      this.addForm = {
+        lrn: "", learner_name: "", sex: "", birthdate: "", age: "",
+        weight_kg: "", height_m: "", grade_level: "", section: "", track_strand: "",
+        school_name: "", school_id: "", district: "", division: "", region: "", remarks: ""
+      };
+      this.addError = "";
+    },
+
+    openAddModal() {
+      this.resetAddForm();
+      this.showAddModal = true;
+    },
+
+    closeAddModal() {
+      if (this.addSaving) return;
+      this.showAddModal = false;
+    },
+
+    async submitAddStudent() {
+      this.addError = "";
+
+      // Basic client-side required check (server re-validates everything).
+      const f = this.addForm;
+      const required = { LRN: f.lrn, "Learner's Name": f.learner_name, Sex: f.sex,
+        Age: f.age, Weight: f.weight_kg, Height: f.height_m };
+      const missing = Object.keys(required).filter(k => required[k] === "" || required[k] === null);
+      if (missing.length) {
+        this.addError = "Please fill: " + missing.join(", ") + ".";
+        return;
+      }
+      if (!this.activeSchoolYear) {
+        this.addError = "No active school year is set. Set one in School Year Settings first.";
+        return;
+      }
+
+      this.addSaving = true;
+      try {
+        const payload = { ...f, school_year: this.activeSchoolYear };
+        const res = await fetch("api/add_manual_student.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          this.showAddModal = false;
+          this.showMessage("success",
+            `Student added: ${data.record.learner_name} (BMI ${data.record.bmi}, ${data.record.bmi_category}).`);
+          this.loadRecords();
+        } else {
+          this.addError = data.message || "Could not add student.";
+        }
+      } catch (e) {
+        this.addError = "Network error: " + e.message;
+      }
+      this.addSaving = false;
     },
 
     async loadRecords() {
@@ -944,6 +1171,7 @@ createApp({
     renderCharts() {
       this.renderRiskChart();
       this.renderBmiChart();
+      this.renderHfaChart();
     },
 
     renderRiskChart() {
@@ -1042,6 +1270,32 @@ createApp({
               }
             }
           }
+        }
+      });
+    },
+
+    renderHfaChart() {
+      const ctx = document.getElementById("hfaChart");
+      if (!ctx) return;
+      if (this.hfaChart) this.hfaChart.destroy();
+
+      const t = this.hfaCount;
+      this.hfaChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: ["Severely Stunted", "Stunted", "Normal", "Tall"],
+          datasets: [{
+            label: "Students",
+            data: [t["Severely Stunted"], t["Stunted"], t["Normal"], t["Tall"]],
+            backgroundColor: ["#dc2626", "#f59e0b", "#16a34a", "#0ea5e9"],
+            borderRadius: 10
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
         }
       });
     }

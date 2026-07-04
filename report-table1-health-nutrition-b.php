@@ -37,6 +37,10 @@
       <p style="margin:4px 0 0; opacity:0.9;">Deworming & Weekly Iron Folic Acid (WIFA) – Read‑Only</p>
     </div>
     <div class="d-flex gap-2">
+      <select v-model="selectedSchoolYear" class="form-select" style="max-width:180px;border-radius:12px;font-weight:700;">
+        <option v-for="y in schoolYearOptions" :key="y" :value="y">{{ y }}</option>
+      </select>
+
       <button class="btn-refresh" @click="openLoadModal" :disabled="loading">📂 Load from Saved</button>
       <button class="btn-refresh" @click="loadDewormingWifaData" :disabled="loading">🔄 Load from Records</button>
       <button class="btn-refresh" @click="printForm" style="background:#f0fdfa; color:#0f766e;">🖨️ Print</button>
@@ -124,6 +128,8 @@ function createWifa() { return { julSep:0, janMar:0 }; }
 createApp({
   data() {
     return {
+      selectedSchoolYear: "2021-2022",
+      schoolYearOptions: ["2021-2022"],
       grades: [7,8,9,10,11,12],
       formData: {
         dewormed: { 7:createDewormed(),8:createDewormed(),9:createDewormed(),10:createDewormed(),11:createDewormed(),12:createDewormed() },
@@ -133,8 +139,25 @@ createApp({
       savedReports: [], savedReportsLoading: false, loadModal: null
     };
   },
-  mounted() { this.loadModal = new bootstrap.Modal(document.getElementById('loadModal')); },
+  mounted() {
+    this.loadSchoolYearOptions(); this.loadModal = new bootstrap.Modal(document.getElementById('loadModal')); },
   methods: {
+    async loadSchoolYearOptions() {
+      try {
+        const res = await fetch('api/get_school_years.php?t=' + Date.now());
+        const data = await res.json();
+        if (data.success && Array.isArray(data.years) && data.years.length) {
+          this.schoolYearOptions = data.years.map(y => y.year_label);
+          // Default to the active year if present, else the first option.
+          if (data.active && this.schoolYearOptions.includes(data.active)) {
+            this.selectedSchoolYear = data.active;
+          } else if (!this.schoolYearOptions.includes(this.selectedSchoolYear)) {
+            this.selectedSchoolYear = this.schoolYearOptions[0];
+          }
+        }
+      } catch (e) { console.warn('Could not load school years', e); }
+    },
+
     dewormTotal(grade,type) {
       const row = this.formData.dewormed[grade] || createDewormed();
       return type === 'sbfp' ? (row.sbfpMale+row.sbfpFemale) : (row.otherMale+row.otherFemale);
@@ -142,7 +165,7 @@ createApp({
     async openLoadModal() {
       this.savedReportsLoading = true;
       try {
-        const res = await fetch('api/get_report_list.php?report_key=table1_b&cache_buster='+Date.now());
+        const res = await fetch('api/get_report_list.php?report_key=table1_b&school_year='+encodeURIComponent(this.selectedSchoolYear)+'&cache_buster='+Date.now());
         if(!res.ok) throw new Error('HTTP '+res.status);
         const data = await res.json();
         this.savedReports = data.success ? data.reports : [];
@@ -159,7 +182,7 @@ createApp({
     async loadDewormingWifaData() {
       this.loading = true;
       try {
-        const res = await fetch('api/get_table1_deworming_wifa_report.php?cache_buster='+Date.now());
+        const res = await fetch('api/get_table1_deworming_wifa_report.php?school_year='+encodeURIComponent(this.selectedSchoolYear)+'&cache_buster='+Date.now());
         const result = await res.json();
         if(!result.success) throw new Error(result.message);
         this.grades.forEach(g=>{ this.formData.dewormed[g]=createDewormed(); this.formData.wifa[g]=createWifa(); });
