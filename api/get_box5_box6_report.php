@@ -1,86 +1,89 @@
 <?php
+// api/get_box5_box6_report.php
+//
+// Returns aggregated ARH (Box 5) and Tobacco (Box 6) data for a school year.
+// ARH/tobacco records now carry their own school_year + grade_level
+// (see arh_add_year_grade.sql), so no fragile join is needed.
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
+include "../db.php";
 
-include "db.php";
+$schoolYear = trim($_REQUEST["school_year"] ?? "");
+if ($schoolYear === "" || !preg_match('/^\d{4}-\d{4}$/', $schoolYear)) {
+    echo json_encode(["success" => false, "message" => "A valid school_year (YYYY-YYYY) is required."]);
+    exit;
+}
 
 $response = [
-    "success" => true,
-    "arh" => [],
+    "success"        => true,
+    "school_year"    => $schoolYear,
+    "arh"            => [],
     "peer_educators" => 0,
-    "tobacco" => []
+    "tobacco"        => []
 ];
 
-$arhSql = "
-    SELECT
-        s.grade_level,
-        a.delivery_mode,
-        COUNT(*) AS total
-    FROM arh_records a
-    LEFT JOIN sf8_student_records s
-        ON a.student_record_id = s.record_id
-    WHERE a.pregnancy_status = 'Pregnant'
-    GROUP BY s.grade_level, a.delivery_mode
-";
-
-$arhResult = $conn->query($arhSql);
-
-if (!$arhResult) {
-    echo json_encode([
-        "success" => false,
-        "message" => "ARH query failed: " . $conn->error
-    ]);
-    exit;
+// ---- ARH (Box 5): pregnant learners by grade + delivery mode ----
+$sql = "SELECT grade_level, delivery_mode, COUNT(*) AS total
+        FROM arh_records
+        WHERE school_year = ?
+          AND LOWER(pregnancy_status) = 'pregnant'
+        GROUP BY grade_level, delivery_mode";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("s", $schoolYear);
+$stmt->execute();
+$res = $stmt->get_result();
+while ($row = $res->fetch_assoc()) {
+    // Pregnant learners with no delivery mode default to "In School" so they
+    // still appear in Box 5 rather than being silently dropped.
+    $mode = trim((string)$row["delivery_mode"]);
+    if ($mode === "") {
+        $mode = "In School";
+    }
+    $response["arh"][] = [
+        "grade_level"   => $row["grade_level"],
+        "delivery_mode" => $mode,
+        "total"         => (int)$row["total"]
+    ];
 }
+$stmt->close();
 
-while ($row = $arhResult->fetch_assoc()) {
-    $response["arh"][] = $row;
+// Peer educators
+$sql = "SELECT COUNT(*) AS c FROM arh_records WHERE school_year = ? AND peer_educator = 1";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("s", $schoolYear);
+$stmt->execute();
+$stmt->bind_result($peerCount);
+$stmt->fetch();
+$response["peer_educators"] = (int)$peerCount;
+$stmt->close();
+
+// ---- Tobacco (Box 6): by level group (JHS 7-10, SHS 11-12) ----
+$sql = "SELECT grade_level, referred_to_care
+        FROM tobacco_control_records
+        WHERE school_year = ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("s", $schoolYear);
+$stmt->execute();
+$res = $stmt->get_result();
+
+$tally = ["jhs" => ["brought" => 0, "referred" => 0], "shs" => ["brought" => 0, "referred" => 0]];
+while ($row = $res->fetch_assoc()) {
+    $grade = (int)preg_replace('/\D/', '', (string)$row["grade_level"]);
+    $group = ($grade >= 11) ? "shs" : "jhs";
+    $tally[$group]["brought"] += 1;
+    if ((int)$row["referred_to_care"] === 1) {
+        $tally[$group]["referred"] += 1;
+    }
 }
+$stmt->close();
 
-$peerSql = "
-    SELECT SUM(peer_educator) AS total_peer
-    FROM arh_records
-";
-
-$peerResult = $conn->query($peerSql);
-
-if ($peerResult) {
-    $peerRow = $peerResult->fetch_assoc();
-    $response["peer_educators"] = intval($peerRow["total_peer"] ?? 0);
-}
-
-$tobaccoSql = "
-    SELECT
-        CASE
-            WHEN s.grade_level IN ('7','8','9','10') THEN 'jhs'
-            WHEN s.grade_level IN ('11','12') THEN 'shs'
-            ELSE 'unknown'
-        END AS level_group,
-
-        SUM(CASE WHEN t.violation_type IN ('Brought tobacco', 'Brought vape') THEN 1 ELSE 0 END) AS brought,
-        SUM(CASE WHEN t.referred_to_care = 1 THEN 1 ELSE 0 END) AS referred
-
-    FROM tobacco_control_records t
-    LEFT JOIN sf8_student_records s
-        ON t.student_record_id = s.record_id
-    GROUP BY level_group
-";
-
-$tobaccoResult = $conn->query($tobaccoSql);
-
-if (!$tobaccoResult) {
-    echo json_encode([
-        "success" => false,
-        "message" => "Tobacco query failed: " . $conn->error
-    ]);
-    exit;
-}
-
-while ($row = $tobaccoResult->fetch_assoc()) {
-    $response["tobacco"][] = $row;
+foreach ($tally as $group => $vals) {
+    $response["tobacco"][] = [
+        "level_group" => $group,
+        "brought"     => $vals["brought"],
+        "referred"    => $vals["referred"]
+    ];
 }
 
 echo json_encode($response);
-
-$conn->close();
 ?>

@@ -55,6 +55,7 @@
       </select>
       <button class="btn-refresh" @click="openLoadModal" :disabled="loading">📂 Load from Saved</button>
       <button class="btn-refresh" @click="loadBox5Box6Data" :disabled="loading">🔄 Load from Records</button>
+      <button class="btn-refresh" @click="saveData" :disabled="saving" style="background:#0f766e;color:#fff;">{{ saving ? 'Saving...' : '💾 Save' }}</button>
       <button class="btn-refresh" @click="printForm" style="background:#f0fdfa; color:#0f766e;">🖨️ Print</button>
       <a href="reports.php" class="btn-back">← Back</a>
     </div>
@@ -88,10 +89,10 @@
       <label class="fw-bold">2. Functional learner support center?</label>
       <div class="radio-group">
         <label class="form-check">
-          <input type="radio" class="form-check-input" value="Yes" v-model="formData.hasSupportCenter" disabled> Yes
+          <input type="radio" class="form-check-input" value="Yes" v-model="formData.hasSupportCenter"> Yes
         </label>
         <label class="form-check">
-          <input type="radio" class="form-check-input" value="No" v-model="formData.hasSupportCenter" disabled> No
+          <input type="radio" class="form-check-input" value="No" v-model="formData.hasSupportCenter"> No
         </label>
       </div>
     </div>
@@ -109,11 +110,11 @@
       <label class="fw-bold">1. IEC Materials displayed</label>
       <div class="checkbox-group">
         <label class="form-check">
-          <input type="checkbox" class="form-check-input" value="No Smoking Signages" v-model="formData.iecMaterials" disabled>
+          <input type="checkbox" class="form-check-input" value="No Smoking Signages" v-model="formData.iecMaterials">
           No Smoking Signages
         </label>
         <label class="form-check">
-          <input type="checkbox" class="form-check-input" value="Poster prohibiting cigarette sales" v-model="formData.iecMaterials" disabled>
+          <input type="checkbox" class="form-check-input" value="Poster prohibiting cigarette sales" v-model="formData.iecMaterials">
           Poster prohibiting cigarette sales
         </label>
       </div>
@@ -123,11 +124,11 @@
       <label class="fw-bold">2. Stores within 100 meters selling:</label>
       <div class="checkbox-group">
         <label class="form-check">
-          <input type="checkbox" class="form-check-input" value="Tobacco products" v-model="formData.storesSelling" disabled>
+          <input type="checkbox" class="form-check-input" value="Tobacco products" v-model="formData.storesSelling">
           Tobacco products
         </label>
         <label class="form-check">
-          <input type="checkbox" class="form-check-input" value="Vape/e-cigarettes" v-model="formData.storesSelling" disabled>
+          <input type="checkbox" class="form-check-input" value="Vape/e-cigarettes" v-model="formData.storesSelling">
           Vape/e-cigarettes
         </label>
       </div>
@@ -207,7 +208,7 @@ createApp({
           shs: { brought: 0, referred: 0 }
         }
       },
-      loading: false,
+      saving: false, loading: false,
       message: "",
       messageType: "success",
       savedReports: [],
@@ -222,6 +223,24 @@ createApp({
   },
 
   methods: {
+    async saveData() {
+      this.saving = true;
+      try {
+        const res = await fetch('api/save_report.php', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            report_key: 'box5_6', school_year: this.selectedSchoolYear,
+            saved_by: localStorage.getItem('local_full_name') || 'Clinic Nurse',
+            report_data: this.formData
+          })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const result = await res.json();
+        this.showMessage(result.success ? 'success' : 'danger', result.message || (result.success ? 'Saved.' : 'Save failed.'));
+      } catch(e) { this.showMessage('danger', 'Error: ' + e.message); }
+      this.saving = false;
+    },
+
     async loadSchoolYearOptions() {
       try {
         const res = await fetch('api/get_school_years.php?t=' + Date.now());

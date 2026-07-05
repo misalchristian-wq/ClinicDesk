@@ -34,9 +34,9 @@
       color: #fff; padding: 26px 32px; border-radius: 26px; margin-bottom: 24px;
       box-shadow: 0 16px 38px rgba(15,118,110,0.22);
       display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap;
-      position: relative; overflow: hidden;
+      position: relative;
     }
-    .page-header::before { content:""; position:absolute; top:-70px; right:-50px; width:200px; height:200px; background:rgba(255,255,255,0.10); border-radius:50%; }
+    .page-header::before { content:""; position:absolute; top:0; right:0; width:150px; height:150px; background:rgba(255,255,255,0.08); border-radius:0 26px 0 60px; pointer-events:none; }
     .page-header-left { display: flex; align-items: center; gap: 16px; position: relative; z-index: 2; }
     .page-header-icon { width: 56px; height: 56px; border-radius: 18px; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.28); display: flex; align-items: center; justify-content: center; font-size: 26px; flex-shrink: 0; }
     .page-header-kicker { font-size: 12px; font-weight: 800; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 3px; }
@@ -50,6 +50,48 @@
     .btn-header:hover { background: #ecfeff; color: #0f5b55; }
     .btn-header.soft { background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.35); box-shadow: none; }
     .btn-header.soft:hover { background: rgba(255,255,255,0.26); color: #fff; }
+    .download-dd { position: relative; display: inline-block; }
+    .download-menu {
+      position: absolute; right: 0; top: calc(100% + 8px); z-index: 2000;
+      background: #fff; border-radius: 14px; box-shadow: 0 18px 44px rgba(0,0,0,0.22);
+      min-width: 262px; overflow: hidden; border: 1px solid #e6f1f2;
+    }
+    .download-menu button {
+      display: flex; align-items: flex-start; gap: 11px; width: 100%; text-align: left;
+      background: #fff; border: none; padding: 13px 16px; cursor: pointer; font-size: 13.5px;
+      color: var(--clinic-text); border-bottom: 1px solid #f0f6f7;
+    }
+    .download-menu button:last-child { border-bottom: none; }
+    .download-menu button:hover { background: #f0fbfc; }
+    .download-menu .dd-emoji { font-size: 18px; line-height: 1.1; }
+    .download-menu .dd-title { font-weight: 800; }
+    .download-menu .dd-sub { font-size: 11.5px; color: var(--clinic-muted); font-weight: 600; }
+    .dd-caret { font-size: 10px; margin-left: 4px; }
+    .incomplete-overlay {
+      position: fixed; inset: 0; background: rgba(15,50,63,0.5);
+      display: flex; align-items: center; justify-content: center; z-index: 3000; padding: 20px;
+    }
+    .incomplete-modal {
+      background: #fff; border-radius: 20px; width: 100%; max-width: 520px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.28); overflow: hidden;
+    }
+    .incomplete-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 22px; background: linear-gradient(135deg,#b45309,#d97706); color: #fff;
+    }
+    .incomplete-head h5 { margin: 0; font-weight: 800; font-size: 1.1rem; }
+    .incomplete-close { background: transparent; border: none; color: #fff; font-size: 1.6rem; cursor: pointer; line-height: 1; }
+    .incomplete-body { padding: 20px 22px; }
+    .incomplete-sub { font-weight: 700; color: var(--clinic-text); margin: 10px 0 8px; }
+    .incomplete-list { list-style: none; padding: 0; margin: 0; }
+    .incomplete-list li {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 11px 14px; border: 1px solid #fde3c4; background: #fffaf3;
+      border-radius: 12px; margin-bottom: 8px; font-weight: 600;
+    }
+    .incomplete-link { color: #b45309; font-weight: 800; text-decoration: none; white-space: nowrap; }
+    .incomplete-link:hover { text-decoration: underline; }
+    .incomplete-foot { padding: 14px 22px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; }
     .brand-row { display: flex; align-items: center; gap: 13px; margin-bottom: 26px; }
     .brand-icon { width: 54px; height: 54px; border-radius: 18px; background: linear-gradient(135deg, var(--clinic-primary), var(--clinic-secondary)); color: white; display: flex; align-items: center; justify-content: center; font-size: 26px; box-shadow: 0 14px 28px rgba(15, 118, 110, 0.18); flex-shrink: 0; }
     .brand-title { font-size: 22px; font-weight: 900; color: var(--clinic-primary); line-height: 1; }
@@ -150,7 +192,27 @@
           <div class="header-prepared-label">Prepared By</div>
           <div class="header-prepared-name">{{ nurseName }}</div>
         </div>
-        <button class="btn-header" @click="printReport">🖨️ Print Report</button>
+        <div class="download-dd">
+          <button class="btn-header" @click="showDownloadMenu = !showDownloadMenu">
+            ⬇️ Download <span class="dd-caret">▼</span>
+          </button>
+          <div class="download-menu" v-if="showDownloadMenu">
+            <button @click="doPrint">
+              <span class="dd-emoji">🖨️</span>
+              <span>
+                <span class="dd-title">Print Consolidated Report</span><br>
+                <span class="dd-sub">On-screen summary for {{ selectedSchoolYear }}</span>
+              </span>
+            </button>
+            <button @click="generateExcelReport">
+              <span class="dd-emoji">📊</span>
+              <span>
+                <span class="dd-title">Generate DepEd Report (Excel)</span><br>
+                <span class="dd-sub">Official Part IX .xlsx for {{ selectedSchoolYear }}</span>
+              </span>
+            </button>
+          </div>
+        </div>
         <button class="btn-header soft" @click="loadRecords">🔄 Refresh Data</button>
         <button class="btn-header soft" @click="resetFilters">Reset Filters</button>
         <a href="nurse-dashboard.php" class="btn-header soft">← Back</a>
@@ -415,6 +477,33 @@
       <div class="report-module-card"><div class="report-module-icon">🍽️</div><h3 class="report-module-title">Food Handling</h3><p class="report-module-desc">Canteen, kitchen, feeding program, and resources.</p><div class="report-module-meta"><span class="module-chip">Food</span><span class="module-chip">Feeding</span></div><div class="report-module-actions"><a href="report-box8-box9.php" class="btn-main">Open</a></div></div>
       <div class="report-module-card"><div class="report-module-icon">♻️</div><h3 class="report-module-title">Solid Waste Management</h3><p class="report-module-desc">Waste management and menstrual hygiene.</p><div class="report-module-meta"><span class="module-chip">Waste</span><span class="module-chip">Hygiene</span></div><div class="report-module-actions"><a href="report-box10-box11.php" class="btn-main">Open</a></div></div>
     </div>
+
+    <!-- INCOMPLETE REPORT MODAL -->
+    <div v-if="showIncompleteModal" class="incomplete-overlay no-print" @click.self="showIncompleteModal = false">
+      <div class="incomplete-modal">
+        <div class="incomplete-head">
+          <h5>⚠️ Report Not Complete</h5>
+          <button class="incomplete-close" @click="showIncompleteModal = false">&times;</button>
+        </div>
+        <div class="incomplete-body">
+          <p class="mb-2">
+            You've saved <strong>{{ savedCount }}</strong> of <strong>{{ totalBoxes }}</strong> boxes for
+            <strong>{{ selectedSchoolYear }}</strong>. All boxes must be saved before generating the report.
+          </p>
+          <p class="incomplete-sub">Please fill and save these boxes first:</p>
+          <ul class="incomplete-list">
+            <li v-for="b in missingBoxes" :key="b.key">
+              <span>{{ b.label }}</span>
+              <a :href="b.page" class="incomplete-link">Open →</a>
+            </li>
+          </ul>
+        </div>
+        <div class="incomplete-foot">
+          <button class="btn-header soft" style="color:#0f766e;border-color:#0f766e;" @click="showIncompleteModal = false">Close</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -429,6 +518,11 @@ createApp({
       activeRole: "",
       currentDate: new Date().toLocaleDateString(),
       selectedSchoolYear: "2021-2022",
+      showDownloadMenu: false,
+      showIncompleteModal: false,
+      missingBoxes: [],
+      savedCount: 0,
+      totalBoxes: 8,
       consolidatedReports: {},
       consolidatedLoading: false,
       consolidatedError: null,
@@ -452,6 +546,9 @@ createApp({
     this.activeRole = role;
     this.nurseName = localStorage.getItem("local_full_name") || role || "ClinicDesk User";
     this.currentDate = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".download-dd")) this.showDownloadMenu = false;
+    });
   },
   methods: {
     lhasTotal(row) { if (!row) return 0; return (row.referredSchool||0)+(row.referredLGU||0)+(row.referredPrivate||0)+(row.referredOthers||0); },
@@ -534,6 +631,41 @@ createApp({
       }
       this.sendingReport = false;
     },
+    doPrint() {
+      this.showDownloadMenu = false;
+      window.print();
+    },
+
+    async generateExcelReport() {
+      this.showDownloadMenu = false;
+      if (!this.selectedSchoolYear) {
+        alert("Please select a school year first.");
+        return;
+      }
+
+      // Completeness gate: all 8 boxes must be saved for this school year.
+      try {
+        const res = await fetch("api/check_report_completeness.php?school_year="
+          + encodeURIComponent(this.selectedSchoolYear) + "&t=" + Date.now());
+        const data = await res.json();
+        if (data.success && !data.complete) {
+          this.missingBoxes = data.missing || [];
+          this.savedCount = data.saved_count || 0;
+          this.totalBoxes = data.total || 8;
+          this.showIncompleteModal = true;
+          return; // block generation
+        }
+      } catch (e) {
+        alert("Could not verify report completeness: " + e.message);
+        return;
+      }
+
+      // All boxes saved -> proceed with the download + print.
+      const url = "api/generate_deped_report.php?school_year=" + encodeURIComponent(this.selectedSchoolYear);
+      window.location.href = url;
+      setTimeout(() => { window.print(); }, 1200);
+    },
+
     printReport() { window.print(); },
     loadRecords() {},
     resetFilters() {},

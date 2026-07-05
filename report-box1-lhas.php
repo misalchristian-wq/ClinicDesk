@@ -146,6 +146,7 @@
 
       <button class="btn-refresh" @click="openLoadModal" :disabled="loading">📂 Load from Saved</button>
       <button class="btn-refresh" @click="loadAggregatedData" :disabled="loading">🔄 Load from Records</button>
+      <button class="btn-refresh" @click="saveData" :disabled="saving" style="background:#0f766e;color:#fff;">{{ saving ? 'Saving...' : '💾 Save' }}</button>
       <button class="btn-refresh" @click="printForm" style="background:#f0fdfa; color:#0f766e;">🖨️ Print</button>
       <a href="reports.php" class="btn-back">← Back to Reports</a>
     </div>
@@ -159,7 +160,7 @@
     <h2 class="section-title">1. Functional Referral Mechanism for Learners with Health Concerns</h2>
     <div class="checkbox-group">
       <label class="form-check" v-for="item in referralOptions" :key="item">
-        <input type="checkbox" class="form-check-input" :value="item" v-model="formData.referralMechanisms" disabled>
+        <input type="checkbox" class="form-check-input" :value="item" v-model="formData.referralMechanisms">
         <span>{{ item }}</span>
       </label>
     </div>
@@ -274,7 +275,7 @@ createApp({
     ];
 
     return {
-      loading: false,
+      saving: false, loading: false,
       message: "",
       messageType: "success",
       selectedSchoolYear: "2021-2022",
@@ -308,6 +309,24 @@ createApp({
   },
 
   methods: {
+    async saveData() {
+      this.saving = true;
+      try {
+        const res = await fetch('api/save_report.php', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            report_key: 'box1', school_year: this.selectedSchoolYear,
+            saved_by: localStorage.getItem('local_full_name') || 'Clinic Nurse',
+            report_data: this.formData
+          })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const result = await res.json();
+        this.showMessage(result.success ? 'success' : 'danger', result.message || (result.success ? 'Saved.' : 'Save failed.'));
+      } catch(e) { this.showMessage('danger', 'Error: ' + e.message); }
+      this.saving = false;
+    },
+
     async loadSchoolYearOptions() {
       try {
         const res = await fetch('api/get_school_years.php?t=' + Date.now());

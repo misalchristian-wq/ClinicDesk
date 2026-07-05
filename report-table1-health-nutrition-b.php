@@ -43,6 +43,7 @@
 
       <button class="btn-refresh" @click="openLoadModal" :disabled="loading">📂 Load from Saved</button>
       <button class="btn-refresh" @click="loadDewormingWifaData" :disabled="loading">🔄 Load from Records</button>
+      <button class="btn-refresh" @click="saveData" :disabled="saving" style="background:#0f766e;color:#fff;">{{ saving ? 'Saving...' : '💾 Save' }}</button>
       <button class="btn-refresh" @click="printForm" style="background:#f0fdfa; color:#0f766e;">🖨️ Print</button>
       <a href="reports.php" class="btn-back">← Back</a>
     </div>
@@ -74,12 +75,20 @@
     <h2 class="section-title">D. Weekly Iron Folic Acid (WIFA) – Female Learners</h2>
     <div class="table-responsive">
       <table class="table table-bordered">
-        <thead><tr><th>Grade</th><th>Jul–Sep 2024</th><th>Jan–Mar 2025</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Grade</th>
+            <th v-for="p in wifaPeriods" :key="'wh-'+p">{{ p }}</th>
+            <th v-if="wifaPeriods.length === 0">WIFA (no data)</th>
+          </tr>
+        </thead>
         <tbody>
           <tr v-for="g in grades" :key="'wifa-'+g">
             <td class="text-start fw-bold">Grade {{ g }}</td>
-            <td>{{ formData.wifa[g]?.julSep || 0 }}</td>
-            <td>{{ formData.wifa[g]?.janMar || 0 }}</td>
+            <td v-for="p in wifaPeriods" :key="'wc-'+g+'-'+p">
+              {{ (formData.wifa[g] && formData.wifa[g][p]) || 0 }}
+            </td>
+            <td v-if="wifaPeriods.length === 0">0</td>
           </tr>
         </tbody>
       </table>
@@ -123,7 +132,24 @@
 const { createApp } = Vue;
 
 function createDewormed() { return { sbfpMale:0, sbfpFemale:0, otherMale:0, otherFemale:0 }; }
-function createWifa() { return { julSep:0, janMar:0 }; }
+function createWifa() { return {}; }  // period_label -> count, filled dynamically
+
+// Derive a period label like "Jul–Sep 2026" from a date string.
+function wifaPeriodLabel(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(String(dateStr).replace(" ", "T"));
+  if (isNaN(d.getTime())) return null;
+  const m = d.getMonth(); // 0-11
+  const y = d.getFullYear();
+  const quarters = [
+    { label: "Jan–Mar", months: [0,1,2] },
+    { label: "Apr–Jun", months: [3,4,5] },
+    { label: "Jul–Sep", months: [6,7,8] },
+    { label: "Oct–Dec", months: [9,10,11] },
+  ];
+  const q = quarters.find(q => q.months.includes(m));
+  return q ? `${q.label} ${y}` : null;
+}
 
 createApp({
   data() {
@@ -131,17 +157,36 @@ createApp({
       selectedSchoolYear: "2021-2022",
       schoolYearOptions: ["2021-2022"],
       grades: [7,8,9,10,11,12],
+      wifaPeriods: [],   // dynamic column labels detected from the data
       formData: {
         dewormed: { 7:createDewormed(),8:createDewormed(),9:createDewormed(),10:createDewormed(),11:createDewormed(),12:createDewormed() },
         wifa: { 7:createWifa(),8:createWifa(),9:createWifa(),10:createWifa(),11:createWifa(),12:createWifa() }
       },
-      loading: false, message: '', messageType: 'success',
+      saving: false, loading: false, message: '', messageType: 'success',
       savedReports: [], savedReportsLoading: false, loadModal: null
     };
   },
   mounted() {
     this.loadSchoolYearOptions(); this.loadModal = new bootstrap.Modal(document.getElementById('loadModal')); },
   methods: {
+    async saveData() {
+      this.saving = true;
+      try {
+        const res = await fetch('api/save_report.php', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            report_key: 'table1_b', school_year: this.selectedSchoolYear,
+            saved_by: localStorage.getItem('local_full_name') || 'Clinic Nurse',
+            report_data: this.formData
+          })
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const result = await res.json();
+        this.showMessage(result.success ? 'success' : 'danger', result.message || (result.success ? 'Saved.' : 'Save failed.'));
+      } catch(e) { this.showMessage('danger', 'Error: ' + e.message); }
+      this.saving = false;
+    },
+
     async loadSchoolYearOptions() {
       try {
         const res = await fetch('api/get_school_years.php?t=' + Date.now());
@@ -176,30 +221,64 @@ createApp({
     loadSelectedReport(reportData) {
       Object.assign(this.formData, reportData);
       this.grades.forEach(g=>{ if(!this.formData.dewormed[g]) this.formData.dewormed[g]=createDewormed(); if(!this.formData.wifa[g]) this.formData.wifa[g]=createWifa(); });
+
+      // Rebuild WIFA period columns from the saved data's keys.
+      const periodsSet = new Set();
+      this.grades.forEach(g=>{ Object.keys(this.formData.wifa[g]||{}).forEach(k=>periodsSet.add(k)); });
+      const qOrder = {"Jan–Mar":1,"Apr–Jun":2,"Jul–Sep":3,"Oct–Dec":4};
+      this.wifaPeriods = Array.from(periodsSet).sort((a,b)=>{
+        const [qa,ya]=a.split(' '); const [qb,yb]=b.split(' ');
+        return (Number(ya)-Number(yb)) || ((qOrder[qa]||0)-(qOrder[qb]||0));
+      });
+
       this.loadModal.hide();
       this.showMessage('success','Report loaded.');
     },
     async loadDewormingWifaData() {
       this.loading = true;
       try {
-        const res = await fetch('api/get_table1_deworming_wifa_report.php?school_year='+encodeURIComponent(this.selectedSchoolYear)+'&cache_buster='+Date.now());
+        const res = await fetch('api/get_deworming_wifa_raw.php?school_year='+encodeURIComponent(this.selectedSchoolYear)+'&cache_buster='+Date.now());
         const result = await res.json();
         if(!result.success) throw new Error(result.message);
+
+        // Reset tables.
         this.grades.forEach(g=>{ this.formData.dewormed[g]=createDewormed(); this.formData.wifa[g]=createWifa(); });
+        const periodsSet = new Set();
+
         (result.records||[]).forEach(row=>{
-          const g=row.grade_level, sex=row.sex?.toLowerCase();
-          if(!this.formData.dewormed[g]) return;
-          if(sex==='male') {
-            this.formData.dewormed[g].sbfpMale += Number(row.sbfp_total||0);
-            this.formData.dewormed[g].otherMale += Number(row.other_total||0);
-          } else if(sex==='female') {
-            this.formData.dewormed[g].sbfpFemale += Number(row.sbfp_total||0);
-            this.formData.dewormed[g].otherFemale += Number(row.other_total||0);
-            this.formData.wifa[g].julSep += Number(row.wifa_jul_sep||0);
-            this.formData.wifa[g].janMar += Number(row.wifa_jan_mar||0);
+          // Normalize grade to a number (7..12) from "Grade 7" etc.
+          const gNum = parseInt(String(row.grade_level||'').replace(/\D/g,''),10);
+          if(!this.grades.includes(gNum)) return;
+          const sex = String(row.sex||'').toLowerCase();
+
+          // Deworming counts.
+          if(sex==='male'){
+            this.formData.dewormed[gNum].sbfpMale  += Number(row.dewormed_sbfp||0);
+            this.formData.dewormed[gNum].otherMale += Number(row.dewormed_other||0);
+          } else if(sex==='female'){
+            this.formData.dewormed[gNum].sbfpFemale  += Number(row.dewormed_sbfp||0);
+            this.formData.dewormed[gNum].otherFemale += Number(row.dewormed_other||0);
+
+            // WIFA: female learners only, bucketed by the actual wifa_date period.
+            if(Number(row.wifa||0) === 1){
+              const label = wifaPeriodLabel(row.wifa_date);
+              if(label){
+                periodsSet.add(label);
+                if(!this.formData.wifa[gNum][label]) this.formData.wifa[gNum][label] = 0;
+                this.formData.wifa[gNum][label] += 1;
+              }
+            }
           }
         });
-        this.showMessage('success','Loaded from records.');
+
+        // Sort detected periods chronologically (by year then quarter order).
+        const qOrder = {"Jan–Mar":1,"Apr–Jun":2,"Jul–Sep":3,"Oct–Dec":4};
+        this.wifaPeriods = Array.from(periodsSet).sort((a,b)=>{
+          const [qa,ya]=a.split(' '); const [qb,yb]=b.split(' ');
+          return (Number(ya)-Number(yb)) || ((qOrder[qa]||0)-(qOrder[qb]||0));
+        });
+
+        this.showMessage('success','Loaded from records. '+(result.records||[]).length+' rows.');
       } catch(e) { this.showMessage('danger','Error: '+e.message); }
       this.loading = false;
     },

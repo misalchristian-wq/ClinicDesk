@@ -16,6 +16,112 @@ try {
     include __DIR__ . "/tobacco_parser.php";
     include __DIR__ . "/arh_parser.php";
 
+    // ------------------------------------------------------------------
+    // Helper: read the "School Year" and "Grade" values from row 7 of the
+    // SF8 sheet (the same fixed cells every SF8 file uses). Requires the
+    // PhpSpreadsheet or a lightweight xlsx read. We use SimpleXLSX-free
+    // approach via ZipArchive to avoid extra deps.
+    // Returns ["school_year" => "...", "grade_level" => "..."].
+    // ------------------------------------------------------------------
+    function readSchoolYearAndGrade($xlsxPath) {
+        $result = ["school_year" => "", "grade_level" => ""];
+        if (!class_exists("ZipArchive")) return $result;
+
+        $zip = new ZipArchive();
+        if ($zip->open($xlsxPath) !== true) return $result;
+
+        // Load shared strings (cell text is often stored here).
+        $shared = [];
+        $ssXml = $zip->getFromName("xl/sharedStrings.xml");
+        if ($ssXml !== false) {
+            $sx = @simplexml_load_string($ssXml);
+            if ($sx !== false) {
+                foreach ($sx->si as $si) {
+                    // handle both plain <t> and rich text runs
+                    $text = "";
+                    if (isset($si->t)) {
+                        $text = (string)$si->t;
+                    } else {
+                        foreach ($si->r as $r) { $text .= (string)$r->t; }
+                    }
+                    $shared[] = $text;
+                }
+            }
+        }
+
+        // Find the data sheet: prefer "Nutritional Status", else first sheet.
+        $sheetPath = "xl/worksheets/sheet1.xml";
+        $wbXml = $zip->getFromName("xl/workbook.xml");
+        $relsXml = $zip->getFromName("xl/_rels/workbook.xml.rels");
+        if ($wbXml !== false && $relsXml !== false) {
+            $wb = @simplexml_load_string($wbXml);
+            $rels = @simplexml_load_string($relsXml);
+            if ($wb !== false && $rels !== false) {
+                $relMap = [];
+                foreach ($rels->Relationship as $rel) {
+                    $relMap[(string)$rel['Id']] = (string)$rel['Target'];
+                }
+                $wb->registerXPathNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
+                foreach ($wb->sheets->sheet as $sh) {
+                    $name = (string)$sh['name'];
+                    $rid = "";
+                    foreach ($sh->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships') as $k => $v) {
+                        if ($k === 'id') $rid = (string)$v;
+                    }
+                    if (stripos($name, "Nutritional Status") !== false && isset($relMap[$rid])) {
+                        $sheetPath = "xl/" . ltrim($relMap[$rid], "/");
+                        break;
+                    }
+                }
+            }
+        }
+
+        $sheetXml = $zip->getFromName($sheetPath);
+        $zip->close();
+        if ($sheetXml === false) return $result;
+
+        $sx = @simplexml_load_string($sheetXml);
+        if ($sx === false) return $result;
+
+        // Resolve a cell's text value (handles shared strings).
+        $cellVal = function($c) use ($shared) {
+            $t = (string)($c['t'] ?? "");
+            $v = isset($c->v) ? (string)$c->v : "";
+            if ($t === "s" && $v !== "" && isset($shared[(int)$v])) {
+                return $shared[(int)$v];
+            }
+            if (isset($c->is->t)) return (string)$c->is->t;
+            return $v;
+        };
+
+        // Walk row 7, collect label->value by scanning left-to-right.
+        foreach ($sx->sheetData->row as $row) {
+            if ((string)$row['r'] !== "7") continue;
+            $cells = [];
+            foreach ($row->c as $c) {
+                $ref = (string)$c['r'];
+                $col = preg_replace('/\d+/', '', $ref);
+                $cells[] = ["col" => $col, "val" => $cellVal($c)];
+            }
+            // Find "School Year" and "Grade" labels, take the next non-empty cell.
+            for ($i = 0; $i < count($cells); $i++) {
+                $label = strtolower(trim($cells[$i]["val"]));
+                if ($label === "") continue;
+                if (strpos($label, "school year") !== false) {
+                    for ($j = $i + 1; $j < count($cells); $j++) {
+                        if (trim($cells[$j]["val"]) !== "") { $result["school_year"] = trim($cells[$j]["val"]); break; }
+                    }
+                } elseif (strpos($label, "grade") !== false) {
+                    for ($j = $i + 1; $j < count($cells); $j++) {
+                        if (trim($cells[$j]["val"]) !== "") { $result["grade_level"] = trim($cells[$j]["val"]); break; }
+                    }
+                }
+            }
+            break;
+        }
+        return $result;
+    }
+
     $data = json_decode(file_get_contents("php://input"), true);
 
     $upload_id = intval($data["upload_id"] ?? 0);
@@ -85,6 +191,11 @@ try {
         exit;
     }
 
+    // Read the file-level school year + grade from row 7 (used by ARH/tobacco).
+    $fileMeta = readSchoolYearAndGrade($tempFile);
+    $fileSchoolYear = $fileMeta["school_year"];
+    $fileGradeLevel = $fileMeta["grade_level"];
+
     $conn->begin_transaction();
 
     $saved = 0;
@@ -97,7 +208,6 @@ try {
         $parsed = parseDewormingWifaExcelFile($tempFile);
         $records = $parsed["records"] ?? [];
 
-        // Duplicate check by LRN within file
         $lrnInFile = [];
         $duplicatesInFile = [];
         foreach ($records as $record) {
@@ -117,7 +227,6 @@ try {
             exit;
         }
 
-        // Check existing in DB
         $existingLrns = [];
         if (!empty($lrnInFile)) {
             $placeholders = implode(',', array_fill(0, count($lrnInFile), '?'));
@@ -163,22 +272,27 @@ try {
             }
 
             $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id FROM sf8_student_records WHERE lrn = ? LIMIT 1");
+            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
             $findStmt->bind_param("s", $lrn);
             $findStmt->execute();
             $match = $findStmt->get_result()->fetch_assoc();
             $findStmt->close();
             if ($match) $studentRecordId = intval($match["record_id"]);
 
+            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
+            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+
             $insertStmt = $conn->prepare("
                 INSERT INTO deworming_wifa_records (
                     upload_id, student_record_id, lrn, learner_name, sex, birthdate, age,
+                    school_year, grade_level,
                     dewormed_sbfp, dewormed_other, wifa, wifa_date, remarks
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $insertStmt->bind_param(
-                "iisssssiiiss",
+                "iisssssssiiiss",
                 $upload_id, $studentRecordId, $lrn, $learnerName, $sex, $birthdate, $age,
+                $recSchoolYear, $recGradeLevel,
                 $dewormedSbfp, $dewormedOther, $wifa, $wifaDate, $remarks
             );
             if ($insertStmt->execute()) $saved++; else $skipped++;
@@ -253,23 +367,28 @@ try {
             }
 
             $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id FROM sf8_student_records WHERE lrn = ? LIMIT 1");
+            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
             $findStmt->bind_param("s", $lrn);
             $findStmt->execute();
             $match = $findStmt->get_result()->fetch_assoc();
             $findStmt->close();
             if ($match) $studentRecordId = intval($match["record_id"]);
 
+            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
+            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+
             $insertStmt = $conn->prepare("
                 INSERT INTO okd_lhas_records (
                     upload_id, student_record_id, lrn, learner_name, sex, birthdate, age,
+                    school_year, grade_level,
                     screening_type, masterlisted, screened, findings,
                     referred_school, referred_lgu, referred_private, referred_others, remarks
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $insertStmt->bind_param(
-                "iissssssiiiiiiis",
+                "iissssssssiiiiiiis",
                 $upload_id, $studentRecordId, $lrn, $learnerName, $sex, $birthdate, $age,
+                $recSchoolYear, $recGradeLevel,
                 $screeningType, $masterlisted, $screened, $findings,
                 $referredSchool, $referredLgu, $referredPrivate, $referredOthers, $remarks
             );
@@ -340,22 +459,27 @@ try {
             }
 
             $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id FROM sf8_student_records WHERE lrn = ? LIMIT 1");
+            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
             $findStmt->bind_param("s", $lrn);
             $findStmt->execute();
             $match = $findStmt->get_result()->fetch_assoc();
             $findStmt->close();
             if ($match) $studentRecordId = intval($match["record_id"]);
 
+            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
+            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+
             $insertStmt = $conn->prepare("
                 INSERT INTO immunization_records (
                     upload_id, student_record_id, lrn, learner_name, sex, birthdate, age,
+                    school_year, grade_level,
                     vaccine, dose, immunized, remarks
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $insertStmt->bind_param(
-                "iisssssssis",
+                "iisssssssssis",
                 $upload_id, $studentRecordId, $lrn, $learnerName, $sex, $birthdate, $age,
+                $recSchoolYear, $recGradeLevel,
                 $vaccine, $dose, $immunized, $remarks
             );
             if ($insertStmt->execute()) $saved++; else $skipped++;
@@ -424,22 +548,28 @@ try {
             }
 
             $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id FROM sf8_student_records WHERE lrn = ? LIMIT 1");
+            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
             $findStmt->bind_param("s", $lrn);
             $findStmt->execute();
             $match = $findStmt->get_result()->fetch_assoc();
             $findStmt->close();
             if ($match) $studentRecordId = intval($match["record_id"]);
 
+            // School year + grade: prefer the matched student's, else the file's row 7 values.
+            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
+            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+
             $insertStmt = $conn->prepare("
                 INSERT INTO tobacco_control_records (
                     upload_id, student_record_id, lrn, learner_name, sex, birthdate, age,
+                    school_year, grade_level,
                     violation_type, referred_to_care, remarks
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $insertStmt->bind_param(
-                "iissssssis",
+                "iissssssssis",
                 $upload_id, $studentRecordId, $lrn, $learnerName, $sex, $birthdate, $age,
+                $recSchoolYear, $recGradeLevel,
                 $violationType, $referredToCare, $remarks
             );
             if ($insertStmt->execute()) $saved++; else $skipped++;
@@ -509,22 +639,28 @@ try {
             }
 
             $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id FROM sf8_student_records WHERE lrn = ? LIMIT 1");
+            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
             $findStmt->bind_param("s", $lrn);
             $findStmt->execute();
             $match = $findStmt->get_result()->fetch_assoc();
             $findStmt->close();
             if ($match) $studentRecordId = intval($match["record_id"]);
 
+            // School year + grade: prefer the matched student's, else the file's row 7 values.
+            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
+            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+
             $insertStmt = $conn->prepare("
                 INSERT INTO arh_records (
                     upload_id, student_record_id, lrn, learner_name, sex, birthdate, age,
+                    school_year, grade_level,
                     pregnancy_status, delivery_mode, peer_educator, remarks
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $insertStmt->bind_param(
-                "iisssssssis",
+                "iisssssssssis",
                 $upload_id, $studentRecordId, $lrn, $learnerName, $sex, $birthdate, $age,
+                $recSchoolYear, $recGradeLevel,
                 $pregnancyStatus, $deliveryMode, $peerEducator, $remarks
             );
             if ($insertStmt->execute()) $saved++; else $skipped++;
@@ -539,7 +675,6 @@ try {
         $parsed = parseSf8ExcelFile($tempFile);
         $students = $parsed["students"] ?? [];
 
-        // Duplicate LRN check within file
         $lrnInFile = [];
         $duplicatesInFile = [];
         foreach ($students as $student) {
@@ -555,7 +690,6 @@ try {
             exit;
         }
 
-        // Check existing LRNs in database
         $existingLrns = [];
         if (!empty($lrnInFile)) {
             $placeholders = implode(',', array_fill(0, count($lrnInFile), '?'));
@@ -574,7 +708,6 @@ try {
             exit;
         }
 
-        // Delete existing records for this upload (if any)
         $deleteStmt = $conn->prepare("DELETE FROM sf8_student_records WHERE upload_id = ?");
         $deleteStmt->bind_param("i", $upload_id);
         $deleteStmt->execute();
@@ -610,7 +743,6 @@ try {
                 continue;
             }
 
-            // Prepare statement with 22 placeholders
             $insertStmt = $conn->prepare("
                 INSERT INTO sf8_student_records (
                     upload_id, lrn, school_name, district, division, region, school_id,
@@ -620,7 +752,6 @@ try {
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
-            // Correct type string: i + 17 s + 4 d = 22
             $typeString = "issssssssssssssddddsss";
 
             $insertStmt->bind_param(
@@ -660,7 +791,6 @@ try {
         $approvalMessage = "Student Information approved. Saved {$saved} records. Skipped {$skipped} records.";
     }
 
-    // Update upload status
     $updateStmt = $conn->prepare("
         UPDATE sf8_uploads
         SET status = 'Approved',
