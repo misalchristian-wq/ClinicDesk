@@ -316,6 +316,13 @@
       font-weight: 800;
     }
 
+    /* BMI Badge Colors (matching chart) */
+    .badge-bmi-severe { background: #5e0b0b; color: white; }
+    .badge-bmi-wasted { background: #a31515; color: white; }
+    .badge-bmi-normal { background: #4caf50; color: white; }
+    .badge-bmi-overweight { background: #f57c00; color: white; }
+    .badge-bmi-obese { background: #c62828; color: white; }
+
     .student-cell {
       display: flex;
       align-items: center;
@@ -404,6 +411,53 @@
       padding: 8px 12px;
     }
 
+    /* Modal styles */
+    .cd-modal-overlay {
+      position: fixed; inset: 0; background: rgba(15, 50, 63, 0.45);
+      display: flex; align-items: flex-start; justify-content: center;
+      z-index: 1080; padding: 30px 16px; overflow-y: auto;
+    }
+    .cd-modal {
+      background: #fff; border-radius: 20px; width: 100%; max-width: 760px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.25); overflow: hidden; margin: auto;
+    }
+    .cd-modal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 24px; background: linear-gradient(135deg, var(--clinic-primary, #0f766e), var(--clinic-secondary, #14b8a6));
+      color: #fff;
+    }
+    .cd-modal-close { background: transparent; border: none; color: #fff; font-size: 1.6rem; line-height: 1; cursor: pointer; }
+    .cd-modal-body { padding: 22px 24px; max-height: 65vh; overflow-y: auto; }
+    .cd-modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid #e6f1f2; }
+
+    /* Reference table styles */
+    .ref-table th {
+      background: #e8f7f5;
+      color: #24404d;
+      font-weight: 800;
+      font-size: 0.75rem;
+      text-align: center;
+    }
+    .ref-table td {
+      font-size: 0.8rem;
+      text-align: center;
+      padding: 6px 8px;
+      color: #000 !important;
+    }
+    .ref-table .bg-severe { background: #fca5a5; }
+    .ref-table .bg-moderate { background: #fcd34d; }
+    .ref-table .bg-normal { background: #86efac; }
+    .ref-table .bg-tall { background: #7dd3fc; }
+
+    .ref-modal-title {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--clinic-primary);
+      border-bottom: 2px solid var(--clinic-border);
+      padding-bottom: 8px;
+      margin-bottom: 16px;
+    }
+
     @media (max-width: 1100px) {
       .summary-grid {
         grid-template-columns: repeat(2, 1fr);
@@ -442,23 +496,6 @@
         grid-template-columns: 1fr;
       }
     }
-    .cd-modal-overlay {
-      position: fixed; inset: 0; background: rgba(15, 50, 63, 0.45);
-      display: flex; align-items: flex-start; justify-content: center;
-      z-index: 1080; padding: 30px 16px; overflow-y: auto;
-    }
-    .cd-modal {
-      background: #fff; border-radius: 20px; width: 100%; max-width: 760px;
-      box-shadow: 0 24px 60px rgba(0,0,0,0.25); overflow: hidden; margin: auto;
-    }
-    .cd-modal-head {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 18px 24px; background: linear-gradient(135deg, var(--clinic-primary, #0f766e), var(--clinic-secondary, #14b8a6));
-      color: #fff;
-    }
-    .cd-modal-close { background: transparent; border: none; color: #fff; font-size: 1.6rem; line-height: 1; cursor: pointer; }
-    .cd-modal-body { padding: 22px 24px; max-height: 65vh; overflow-y: auto; }
-    .cd-modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid #e6f1f2; }
   </style>
 </head>
 
@@ -517,6 +554,7 @@
     </div>
   </div>
 
+  <!-- Filter Card with Classification Reference Button -->
   <div class="card p-4 filter-card">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
       <div>
@@ -526,9 +564,14 @@
         </p>
       </div>
 
-      <button class="btn btn-outline-clinic" @click="resetFilters">
-        Reset Filters
-      </button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-clinic" @click="resetFilters">
+          Reset Filters
+        </button>
+        <button class="btn btn-outline-clinic" @click="showRefModal = true">
+          📊 Classification Reference
+        </button>
+      </div>
     </div>
 
     <div class="row g-3">
@@ -553,8 +596,8 @@
         <select v-model="bmiFilter" class="form-select">
           <option value="">All BMI Categories</option>
           <option value="Normal">Normal</option>
-          <option value="Underweight">Underweight</option>
-          <option value="Severely Underweight">Severely Underweight</option>
+          <option value="Wasted">Wasted</option>
+          <option value="Severely Wasted">Severely Wasted</option>
           <option value="Overweight">Overweight</option>
           <option value="Obese">Obese</option>
         </select>
@@ -608,9 +651,8 @@
       </div>
 
       <div class="d-flex gap-2">
-        <button class="btn btn-outline-clinic" @click="openAddModal">
-          + Add Student
-        </button>
+        <a href="health-records-manager.php" class="btn btn-outline-clinic">🗂️ Records Manager</a>
+        
         <button class="btn btn-green" @click="loadRecords">
           Refresh
         </button>
@@ -631,7 +673,6 @@
             <th>BMI Category</th>
             <th>Height-for-Age</th>
             <th>Risk Level</th>
-
             <th style="text-align: center;">Action</th>
           </tr>
         </thead>
@@ -677,8 +718,6 @@
               </span>
             </td>
 
-          
-
             <td class="text-center">
               <a :href="'student-profile.php?record_id=' + record.record_id" class="btn btn-outline-clinic btn-sm action-btn">
                 View Profile
@@ -697,7 +736,7 @@
     </div>
   </div>
 
-  <!-- ADD STUDENT MODAL (Vue-controlled) -->
+  <!-- ADD STUDENT MODAL -->
   <div v-if="showAddModal" class="cd-modal-overlay" @click.self="closeAddModal">
     <div class="cd-modal">
       <div class="cd-modal-head">
@@ -800,6 +839,65 @@
     </div>
   </div>
 
+  <!-- CLASSIFICATION REFERENCE MODAL -->
+  <div v-if="showRefModal" class="cd-modal-overlay" @click.self="showRefModal = false">
+    <div class="cd-modal" style="max-width: 820px;">
+      <div class="cd-modal-head">
+        <h5 class="fw-bold mb-0">📊 BMI & Height‑for‑Age Classification Reference</h5>
+        <button class="cd-modal-close" @click="showRefModal = false">&times;</button>
+      </div>
+      <div class="cd-modal-body">
+
+        <!-- BMI Table -->
+        <h6 class="ref-modal-title">Body Mass Index (BMI) Classification</h6>
+        <div class="table-responsive mb-4">
+          <table class="table table-bordered table-sm ref-table">
+            <thead>
+              <tr>
+                <th>Classification</th>
+                <th>BMI Range (kg/m²)</th>
+                <th>Risk Level</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="fw-bold">Severely Wasted</td><td>&lt; 16.0</td><td><span class="badge badge-bmi-severe">High</span></td></tr>
+              <tr><td class="fw-bold">Wasted</td><td>16.0 – 18.4</td><td><span class="badge badge-bmi-wasted">Moderate</span></td></tr>
+              <tr><td class="fw-bold">Normal</td><td>18.5 – 24.9</td><td><span class="badge badge-bmi-normal">Low</span></td></tr>
+              <tr><td class="fw-bold">Overweight</td><td>25.0 – 29.9</td><td><span class="badge badge-bmi-overweight">Increased</span></td></tr>
+              <tr><td class="fw-bold">Obese</td><td>≥ 30.0</td><td><span class="badge badge-bmi-obese">High</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small text-muted"><em>* For ages 5–19, BMI‑for‑age percentiles are used (WHO 2007).</em></p>
+
+        <!-- Height‑for‑Age Table -->
+        <h6 class="ref-modal-title mt-4">Height‑for‑Age Classification – Children & Adolescents (5–19 yrs)</h6>
+        <div class="table-responsive">
+          <table class="table table-bordered table-sm ref-table">
+            <thead>
+              <tr>
+                <th>Classification</th>
+                <th>Z‑Score Range</th>
+                <th>Interpretation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="bg-severe"><td class="fw-bold">Severely Stunted</td><td>&lt; -3 SD</td><td>Severe growth failure</td></tr>
+              <tr class="bg-moderate"><td class="fw-bold">Stunted</td><td>-3 to -2 SD</td><td>Chronic undernutrition</td></tr>
+              <tr class="bg-normal"><td class="fw-bold">Normal</td><td>-2 to +2 SD</td><td>Healthy growth</td></tr>
+              <tr class="bg-tall"><td class="fw-bold">Tall</td><td>&gt; +2 SD</td><td>Above average height</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small text-muted"><em>* Based on WHO Child Growth Standards (2006) and WHO Reference 2007 for 5‑19 years.</em></p>
+
+      </div>
+      <div class="cd-modal-foot">
+        <button class="btn btn-secondary" @click="showRefModal = false">Close</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -827,11 +925,15 @@ createApp({
       addSaving: false,
       addError: "",
       activeSchoolYear: "",
+
       addForm: {
         lrn: "", learner_name: "", sex: "", birthdate: "", age: "",
         weight_kg: "", height_m: "", grade_level: "", section: "", track_strand: "",
         school_name: "", school_id: "", district: "", division: "", region: "", remarks: ""
       },
+
+      // Reference modal
+      showRefModal: false,
 
       riskChart: null,
       bmiChart: null,
@@ -883,28 +985,24 @@ createApp({
       return this.filteredRecords.filter(record => this.getRiskLevel(record) === "For Review").length;
     },
 
+    // BMI counts with correct categories
     normalBmiCount() {
       return this.filteredRecords.filter(record => String(record.bmi_category || "") === "Normal").length;
     },
-
-    underweightCount() {
-      return this.filteredRecords.filter(record => String(record.bmi_category || "") === "Underweight").length;
+    wastedCount() {
+      return this.filteredRecords.filter(record => String(record.bmi_category || "") === "Wasted").length;
     },
-
-    severelyUnderweightCount() {
-      return this.filteredRecords.filter(record => String(record.bmi_category || "") === "Severely Underweight").length;
+    severelyWastedCount() {
+      return this.filteredRecords.filter(record => String(record.bmi_category || "") === "Severely Wasted").length;
     },
-
     overweightCount() {
       return this.filteredRecords.filter(record => String(record.bmi_category || "") === "Overweight").length;
     },
-
     obeseCount() {
       return this.filteredRecords.filter(record => String(record.bmi_category || "") === "Obese").length;
     },
 
     hfaCount() {
-      // Counts by height-for-age category (handles field-name variants).
       const tally = { "Severely Stunted": 0, "Stunted": 0, "Normal": 0, "Tall": 0 };
       this.filteredRecords.forEach(r => {
         const h = String(this.getHeightForAge(r) || "").toLowerCase();
@@ -912,6 +1010,11 @@ createApp({
         else if (h.includes("stunted")) tally["Stunted"]++;
         else if (h.includes("tall")) tally["Tall"]++;
         else if (h.includes("normal")) tally["Normal"]++;
+        else {
+          const num = parseFloat(h);
+          if (!isNaN(num) && num >= 0.5 && num <= 2.5) tally["Normal"]++;
+          else tally["Normal"]++;
+        }
       });
       return tally;
     }
@@ -985,7 +1088,6 @@ createApp({
     async submitAddStudent() {
       this.addError = "";
 
-      // Basic client-side required check (server re-validates everything).
       const f = this.addForm;
       const required = { LRN: f.lrn, "Learner's Name": f.learner_name, Sex: f.sex,
         Age: f.age, Weight: f.weight_kg, Height: f.height_m };
@@ -1101,6 +1203,7 @@ createApp({
       }
 
       if (
+        bmiCategory.includes("wasted") ||
         bmiCategory.includes("underweight") ||
         bmiCategory.includes("overweight") ||
         hfa.includes("stunted")
@@ -1130,7 +1233,7 @@ createApp({
         return "Priority clinic follow-up recommended.";
       }
 
-      if (bmiCategory.includes("underweight")) {
+      if (bmiCategory.includes("wasted") || bmiCategory.includes("underweight")) {
         return "Monitor weight and encourage balanced meals.";
       }
 
@@ -1151,13 +1254,11 @@ createApp({
 
     getBmiBadge(category) {
       const text = String(category || "").toLowerCase();
-
-      if (text.includes("normal")) return "bg-success";
-      if (text.includes("severely")) return "bg-danger";
-      if (text.includes("underweight")) return "bg-warning text-dark";
-      if (text.includes("overweight")) return "bg-warning text-dark";
-      if (text.includes("obese")) return "bg-danger";
-
+      if (text.includes("severely")) return "badge-bmi-severe";
+      if (text.includes("wasted")) return "badge-bmi-wasted";
+      if (text.includes("normal")) return "badge-bmi-normal";
+      if (text.includes("overweight")) return "badge-bmi-overweight";
+      if (text.includes("obese")) return "badge-bmi-obese";
       return "bg-secondary";
     },
 
@@ -1218,58 +1319,31 @@ createApp({
 
     renderBmiChart() {
       const ctx = document.getElementById("bmiChart");
-
       if (!ctx) return;
-
-      if (this.bmiChart) {
-        this.bmiChart.destroy();
-      }
+      if (this.bmiChart) this.bmiChart.destroy();
 
       this.bmiChart = new Chart(ctx, {
         type: "bar",
         data: {
-          labels: [
-            "Normal",
-            "Underweight",
-            "Severely Underweight",
-            "Overweight",
-            "Obese"
-          ],
+          labels: ["Severely Wasted", "Wasted", "Normal", "Overweight", "Obese"],
           datasets: [{
             label: "Students",
             data: [
+              this.severelyWastedCount,
+              this.wastedCount,
               this.normalBmiCount,
-              this.underweightCount,
-              this.severelyUnderweightCount,
               this.overweightCount,
               this.obeseCount
             ],
-            backgroundColor: [
-              "#16a34a",
-              "#f59e0b",
-              "#dc2626",
-              "#f97316",
-              "#991b1b"
-            ],
+            backgroundColor: ["#5e0b0b", "#a31515", "#4caf50", "#f57c00", "#c62828"],
             borderRadius: 10
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              display: false
-            }
-          },
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: {
-                precision: 0
-              }
-            }
-          }
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
         }
       });
     },

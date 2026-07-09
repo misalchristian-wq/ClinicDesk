@@ -7,9 +7,11 @@ leaf cells are written; DepEd SUM() totals recalculate on their own.
 
 Usage: python3 generate_deped_report.py <template> <output> <school_year> <data.json>
 data.json: {"students":[...], "immunization":[...], "deworming":[...]}
-Sheets filled: Table 1.B (nutrition), Table 1.A (immunization), Table 1.C (deworming).
+Sheets filled: Table 1.B (nutrition), Table 1.A (immunization), Table 1.C (deworming),
+              Table 1.D (WIFA), Box 1, Boxes 5 & 6.
 """
 import sys, json
+import datetime
 import openpyxl
 
 def norm_grade(g):
@@ -115,6 +117,67 @@ def fill_deworming(ws, deworm, sy):
     for (grade,sex),n in other.items():
         row = DEWORM_ROWS.get(grade)
         if row: put(ws, "AA" if sex=="M" else "AF", row, n); total += n
+    return total
+
+# ---- Table 1.D WIFA (new) ----
+def fill_wifa(ws, deworm, sy):
+    # Group WIFA counts by grade and period (Jul-Sep, Jan-Mar) for females only
+    wifa_counts = {}  # (grade, period) -> count
+    for r in deworm:
+        # Skip if not WIFA or not female
+        if not truthy(r.get("wifa")):
+            continue
+        sex = norm_sex(r.get("sex"))
+        if sex != "F":
+            continue
+        grade = norm_grade(r.get("grade_level"))
+        if not grade:
+            continue
+        # Determine period from wifa_date
+        date_str = str(r.get("wifa_date", "")).strip()
+        if not date_str:
+            continue
+        try:
+            dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+            month = dt.month
+            if 7 <= month <= 9:
+                period = "jul_sep"
+            elif 1 <= month <= 3:
+                period = "jan_mar"
+            else:
+                continue
+        except:
+            continue
+        key = (grade, period)
+        wifa_counts[key] = wifa_counts.get(key, 0) + 1
+
+    # Map grade to column letters (female only, single column)
+    grade_cols = {
+        "Grade 7": "Q",
+        "Grade 8": "U",
+        "Grade 9": "Y",
+        "Grade 10": "AC",
+        "Grade 11": "AP",
+        "Grade 12": "AT",
+    }
+
+    # Row numbers per level and period
+    rows = {
+        "jhs": {"jul_sep": 35, "jan_mar": 37},
+        "shs": {"jul_sep": 36, "jan_mar": 38},
+    }
+
+    total = 0
+    for (grade, period), count in wifa_counts.items():
+        col = grade_cols.get(grade)
+        if not col: continue
+        grade_num = int(grade.split()[-1]) if grade.startswith("Grade") else None
+        if grade_num is None: continue
+        level = "jhs" if grade_num <= 10 else "shs"
+        row = rows[level].get(period)
+        if row:
+            put(ws, col, row, count)
+            total += count
     return total
 
 # ---- Box 1 (OKD & LHAS) ----
@@ -240,12 +303,13 @@ def main():
     arh = data.get("arh", []); peer_educators = data.get("peer_educators", 0); tobacco = data.get("tobacco", [])
     lhas = data.get("lhas", [])
     wb = openpyxl.load_workbook(template)
-    filled = {"nutrition":0,"immunization":0,"deworming":0,"box5_6":0,"lhas":0}
+    filled = {"nutrition":0,"immunization":0,"deworming":0,"box5_6":0,"lhas":0, "wifa":0}
     if NUTRI_SHEET in wb.sheetnames:
         filled["nutrition"] = fill_nutrition(wb[NUTRI_SHEET], students, sy)
         filled["immunization"] = fill_immunization(wb[NUTRI_SHEET], immun, sy)
     if DEWORM_SHEET in wb.sheetnames:
         filled["deworming"] = fill_deworming(wb[DEWORM_SHEET], deworm, sy)
+        filled["wifa"] = fill_wifa(wb[DEWORM_SHEET], deworm, sy)   # <-- NEW
     if BOX56_SHEET in wb.sheetnames:
         filled["box5_6"] = fill_box5_box6(wb[BOX56_SHEET], arh, peer_educators, tobacco)
     if LHAS_SHEET in wb.sheetnames:

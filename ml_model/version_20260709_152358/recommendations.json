@@ -1,0 +1,47 @@
+{
+  "Vitamin A Deficiency": {
+    "recommendation_text": "Student shows signs of Vitamin A deficiency. Refer for clinical confirmation and dietary counseling.",
+    "recommended_foods": "Camote tops, squash, malunggay, carrots, egg yolk, liver",
+    "intervention_type": "Dietary Supplementation"
+  },
+  "Vitamin D Deficiency": {
+    "recommendation_text": "Low Vitamin D levels suspected. Encourage 15-20 minutes of morning sun exposure daily and dietary changes.",
+    "recommended_foods": "Milk, canned sardines, egg yolk, fortified cereals",
+    "intervention_type": "Dietary Supplementation + Sun Exposure"
+  },
+  "Vitamin C Deficiency": {
+    "recommendation_text": "Signs consistent with Vitamin C deficiency (bleeding gums, fatigue). Increase citrus fruit intake.",
+    "recommended_foods": "Guava, calamansi, orange, tomato, green leafy vegetables",
+    "intervention_type": "Dietary Modification"
+  },
+  "Vitamin B12 Deficiency": {
+    "recommendation_text": "Possible Vitamin B12 deficiency. Recommend increase in animal protein intake and clinical referral.",
+    "recommended_foods": "Beef, chicken liver, eggs, dairy products, fish",
+    "intervention_type": "Dietary Supplementation"
+  },
+  "Iron Deficiency": {
+    "recommendation_text": "Iron deficiency anemia suspected. Prioritise iron-rich foods and Vitamin C to aid absorption.",
+    "recommended_foods": "Malunggay, kangkong, beef liver, mongo, camote tops, sardines",
+    "intervention_type": "Iron Supplementation + WIFA"
+  },
+  "Folate Deficiency": {
+    "recommendation_text": "Folate deficiency indicated. Increase dark green vegetable consumption.",
+    "recommended_foods": "Malunggay, spinach, asparagus, mongo beans, fortified bread",
+    "intervention_type": "Dietary Supplementation"
+  },
+  "Iodine Deficiency": {
+    "recommendation_text": "Possible iodine deficiency. Ensure use of iodized salt and seafood intake.",
+    "recommended_foods": "Iodized salt, fish, seaweed, shrimp",
+    "intervention_type": "Dietary Modification + Monitoring"
+  },
+  "Severe Malnutrition": {
+    "recommendation_text": "Severe malnutrition risk detected. Immediate referral to health center required. Enroll in school feeding program.",
+    "recommended_foods": "High-calorie therapeutic foods, fortified porridge, RUTF if available",
+    "intervention_type": "Urgent Referral + Feeding Program"
+  },
+  "Normal": {
+    "recommendation_text": "No nutritional deficiency detected. Maintain a balanced diet and healthy lifestyle.",
+    "recommended_foods": "Balanced diet: vegetables, fruits, protein, grains, dairy",
+    "intervention_type": "Health Promotion"
+  }
+}

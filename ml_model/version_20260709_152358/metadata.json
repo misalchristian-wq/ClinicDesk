@@ -1,0 +1,47 @@
+{
+  "version": "20260709_152358",
+  "best_model": "Decision Tree",
+  "best_f1": 0.9809,
+  "uses_scaler": false,
+  "feature_cols": [
+    "age",
+    "gender",
+    "bmi",
+    "exercise_level",
+    "diet_type",
+    "sun_exposure",
+    "has_night_blindness",
+    "has_fatigue",
+    "has_bleeding_gums",
+    "has_bone_pain",
+    "has_muscle_weakness",
+    "has_numbness_tingling",
+    "has_memory_problems",
+    "has_pale_skin",
+    "has_multiple_deficiencies",
+    "symptoms_count",
+    "hemoglobin_g_dl",
+    "serum_vitamin_d_ng_ml",
+    "serum_vitamin_b12_pg_ml",
+    "serum_folate_ng_ml"
+  ],
+  "deficiency_classes": [
+    "Iron Deficiency",
+    "Normal",
+    "Severe Malnutrition",
+    "Vitamin D Deficiency"
+  ],
+  "risk_classes": [
+    "High",
+    "Low",
+    "Moderate"
+  ],
+  "training_samples": 311352,
+  "test_samples": 20279,
+  "datasets_used": [
+    "ds1_nutrient_deficiency",
+    "ds2_vitamin_deficiency",
+    "ds3_malnutrition_ethiopia",
+    "ds4_health_risk"
+  ]
+}

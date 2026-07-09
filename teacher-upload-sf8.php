@@ -452,7 +452,7 @@
     .fs-uploading { background: #fff3cd; color: #856404; }
     .fs-uploaded { background: #d4f0fc; color: #0c5e7e; }
     .fs-failed { background: #ffe0e0; color: #a12020; }
-    .fs-error-text { color: #a12020; font-size: 0.85rem; margin-top: 6px; }
+    .fs-error-box { color: #7f1d1d; font-size: 0.85rem; margin-top: 8px; background: #fff1f2; border: 1px solid #fecaca; border-radius: 10px; padding: 8px 12px; line-height: 1.5; }
     .fs-meta { font-size: 0.8rem; color: #6b7d87; margin-top: 4px; }
     .fs-remove { border: none; background: transparent; color: #a12020; font-weight: 700; cursor: pointer; font-size: 0.85rem; }
     .mini-preview { margin-top: 10px; max-height: 220px; overflow: auto; border: 1px solid var(--clinic-border, #d9eef0); border-radius: 10px; }
@@ -586,8 +586,8 @@
             <span v-if="f.schoolYear"> · School Year: <strong>{{ f.schoolYear }}</strong></span>
           </div>
 
-          <div v-if="f.error" class="fs-error-text">
-            ⚠ {{ f.error }}
+          <div v-if="f.error" class="fs-error-box">
+            <strong>Why invalid:</strong> {{ f.error }}
           </div>
 
           <!-- Inline preview per file -->
@@ -704,8 +704,8 @@ createApp({
 
     statusLabel(status) {
       return {
-        valid: "Valid",
-        invalid: "Error",
+        valid: "✓ Valid",
+        invalid: "✗ Invalid",
         uploading: "Uploading...",
         uploaded: "Submitted",
         failed: "Failed"
@@ -748,7 +748,7 @@ createApp({
         id: this.nextFileId++,
         file: file,
         name: file.name,
-        status: "parsing",   // parsing | valid | invalid | uploading | uploaded | failed
+        status: "pending",   // pending | valid | invalid | uploading | uploaded | failed
         error: "",
         reportCode: "",
         reportPurpose: "",
@@ -758,7 +758,7 @@ createApp({
       };
     },
 
-    handleFiles(event) {
+    async handleFiles(event) {
       this.message = "";
       const picked = Array.from(event.target.files || []);
       event.target.value = ""; // allow re-selecting the same file later
@@ -772,8 +772,9 @@ createApp({
           continue;
         }
         const entry = this.makeFileEntry(file);
+        // Parse first, then add to the list so it shows valid/invalid immediately (no "parsing" flash)
+        await this.parseFile(entry);
         this.files.push(entry);
-        this.parseFile(entry);
       }
     },
 
@@ -781,56 +782,64 @@ createApp({
       this.files = this.files.filter(f => f.id !== id);
     },
 
-    // Parses one file, sets status valid/invalid with a specific error.
+    // Parses one file, sets status valid/invalid. Returns a Promise.
     parseFile(entry) {
-      const reader = new FileReader();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
 
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: "array", cellDates: false });
+        reader.onload = async (e) => {
+          // Wait for the active school year to finish loading before validating.
+          if (this._schoolYearReady) await this._schoolYearReady;
+          try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: "array", cellDates: false });
 
-          const sheetName = workbook.SheetNames.includes("Nutritional Status")
-            ? "Nutritional Status"
-            : workbook.SheetNames[0];
+            const sheetName = workbook.SheetNames.includes("Nutritional Status")
+              ? "Nutritional Status"
+              : workbook.SheetNames[0];
 
-          const worksheet = workbook.Sheets[sheetName];
-          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: true });
+            const worksheet = workbook.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: true });
 
-          // A1 = report purpose/code
-          const detectedPurpose = rows[0]?.[0] ? String(rows[0][0]).trim() : "";
-          if (!detectedPurpose) {
-            return this.failFile(entry, "Cell A1 is empty. Put the report purpose/code in A1.");
+            // A1 = report purpose/code
+            const detectedPurpose = rows[0]?.[0] ? String(rows[0][0]).trim() : "";
+            if (!detectedPurpose) {
+              this.failFile(entry, "Cell A1 is empty — put the report purpose/code in A1.");
+              return resolve();
+            }
+            if (!this.allowedPurposes[detectedPurpose]) {
+              this.failFile(entry, `Unrecognised report type in A1: "${detectedPurpose}". Check that A1 matches one of the allowed report codes.`);
+              return resolve();
+            }
+
+            entry.reportPurpose = detectedPurpose;
+            entry.reportCode = this.allowedPurposes[detectedPurpose];
+            entry.previewRows = rows.slice(0, 40);
+
+            // School year (row 7, next to the "School Year" label)
+            const syResult = this.readSchoolYear(rows);
+            if (syResult.error) {
+              this.failFile(entry, syResult.error, entry.reportCode);
+              return resolve();
+            }
+            entry.schoolYear = syResult.year;
+
+            // Deworming files carry structured rows.
+            if (entry.reportCode === "deworming_wifa") {
+              entry.extractedRows = this.parseDewormingWifa(rows);
+            }
+
+            entry.status = "valid";
+            entry.error = "";
+          } catch (error) {
+            this.failFile(entry, "Unable to read Excel file: " + error.message);
           }
-          if (!this.allowedPurposes[detectedPurpose]) {
-            return this.failFile(entry, `Invalid A1 report purpose/code: "${detectedPurpose}".`);
-          }
+          resolve();
+        };
 
-          entry.reportPurpose = detectedPurpose;
-          entry.reportCode = this.allowedPurposes[detectedPurpose];
-          entry.previewRows = rows.slice(0, 40);
-
-          // School year (row 7, next to the "School Year" label)
-          const syResult = this.readSchoolYear(rows);
-          if (syResult.error) {
-            return this.failFile(entry, syResult.error, entry.reportCode);
-          }
-          entry.schoolYear = syResult.year;
-
-          // Deworming files carry structured rows.
-          if (entry.reportCode === "deworming_wifa") {
-            entry.extractedRows = this.parseDewormingWifa(rows);
-          }
-
-          entry.status = "valid";
-          entry.error = "";
-        } catch (error) {
-          this.failFile(entry, "Unable to read Excel file: " + error.message);
-        }
-      };
-
-      reader.onerror = () => this.failFile(entry, "Could not read the file from disk.");
-      reader.readAsArrayBuffer(entry.file);
+        reader.onerror = () => { this.failFile(entry, "Could not read the file from disk."); resolve(); };
+        reader.readAsArrayBuffer(entry.file);
+      });
     },
 
     failFile(entry, message, keepCode) {
