@@ -75,7 +75,7 @@
         <p class="ph-sub">Manage category records – search, edit, add, delete.</p>
       </div>
     </div>
-    <a href="student-dashboard.php" class="btn-back">← Back to Student Dashboard</a>
+    <a href="monitoring-hub.php" class="btn-back">← Back to Monitoring</a>
   </div>
 
   <div v-if="message" :class="['alert', messageType === 'success' ? 'alert-success' : 'alert-danger']">{{ message }}</div>
@@ -361,8 +361,16 @@ createApp({
       return this.filteredRecords.length > 0 && this.rmSelected.length === this.filteredRecords.length;
     }
   },
-  mounted() {
-    this.loadActiveSchoolYear();
+  async mounted() {
+    if (localStorage.getItem('active_role') !== 'Clinic Nurse' || !localStorage.getItem('local_id_token')) {
+      window.location.href = 'login.php';
+      return;
+    }
+    const requestedCategory = new URLSearchParams(window.location.search).get('category');
+    if (['nutrition','lhas','deworming','immunization','arh','tobacco'].includes(requestedCategory)) {
+      this.rmCategory = requestedCategory;
+    }
+    await this.loadActiveSchoolYear();
     this.loadCategoryRecords();
   },
   methods: {
@@ -408,7 +416,7 @@ createApp({
       try {
         const url = 'api/get_category_records.php?category=' + encodeURIComponent(this.rmCategory) +
           '&school_year=' + encodeURIComponent(this.activeSchoolYear || '') + '&t=' + Date.now();
-        const res = await fetch(url);
+        const res = await fetch(url, { headers: { Authorization: 'Bearer ' + localStorage.getItem('local_id_token') } });
         const text = await res.text();
         let data;
         try {
@@ -604,7 +612,7 @@ async saveCategoryEdit() {
   try {
     const res = await fetch('api/update_category_records.php', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('local_id_token') },
       body: JSON.stringify(payload)
     });
     const data = await res.json();
@@ -691,14 +699,17 @@ async saveCategoryEdit() {
     async saveCategoryAdd() {
       this.addCategoryModal.saving = true;
       this.addCategoryModal.error = '';
-      const payload = {
-        category: this.rmCategory,
-        record: this.addCategoryModal.form
-      };
+      const manualStudent = this.rmCategory === 'nutrition';
+      const payload = manualStudent
+        ? { ...this.addCategoryModal.form, school_year: this.activeSchoolYear }
+        : { category: this.rmCategory, record: this.addCategoryModal.form, school_year: this.activeSchoolYear };
       try {
-        const res = await fetch('api/add_category_record.php', {
+        const res = await fetch(manualStudent ? 'api/add_manual_student.php' : 'api/add_category_record.php', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + localStorage.getItem('local_id_token')
+          },
           body: JSON.stringify(payload)
         });
         const text = await res.text();
@@ -741,7 +752,7 @@ async saveCategoryEdit() {
       try {
         const res = await fetch('api/update_category_records.php', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('local_id_token') },
           body: JSON.stringify({ category: this.rmCategory, rows })
         });
         const data = await res.json();
@@ -756,7 +767,7 @@ async saveCategoryEdit() {
       try {
         const res = await fetch('api/update_category_records.php', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem('local_id_token') },
           body: JSON.stringify({
             category: this.rmCategory,
             bulk: {
@@ -788,5 +799,6 @@ async saveCategoryEdit() {
   }
 }).mount('#app');
 </script>
+<script src="assets/table-pagination.js" defer></script>
 </body>
 </html>

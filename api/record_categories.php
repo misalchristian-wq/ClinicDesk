@@ -9,6 +9,7 @@ function clinicRecordCategories() {
             "fields" => [
                 "lrn"            => ["label" => "LRN",            "type" => "text", "edit" => true],
                 "learner_name"   => ["label" => "Learner",        "type" => "text", "edit" => true],
+                "profile_status" => ["label" => "Profile",        "type" => "text", "edit" => false],
                 "grade_level"    => ["label" => "Grade",          "type" => "text", "edit" => true],
                 "section"        => ["label" => "Section",        "type" => "text", "edit" => true],
                 "sex"            => ["label" => "Sex",             "type" => "enum",  "edit" => true, "options" => ["Male","Female"]],

@@ -168,8 +168,23 @@
     .alert { border-radius: 16px; border: none; box-shadow: var(--clinic-shadow); }
     .alert-info { background: #ecfeff; color: #155e75; border: 1px solid #bae6fd; }
     .school-year-select { max-width: 180px; }
+    .report-workflow { background:#fff; border:1px solid var(--clinic-border); border-radius:22px; padding:24px; margin-bottom:22px; box-shadow:var(--clinic-shadow); }
+    .report-workflow h2 { color:var(--clinic-primary); font-size:21px; font-weight:800; margin:0 0 6px; }
+    .report-workflow p { color:var(--clinic-muted); margin:0 0 18px; }
+    .workflow-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:18px 0; }
+    .workflow-step { background:var(--clinic-light); border:1px solid var(--clinic-border); border-radius:15px; padding:15px; }
+    .workflow-step strong { color:var(--clinic-primary); display:block; margin-bottom:4px; }
+    .workflow-step span { font-size:13px; color:var(--clinic-muted); }
+    .report-status { border-radius:999px; padding:5px 10px; font-size:11px; font-weight:800; white-space:nowrap; }
+    .report-status.saved { color:#166534; background:#dcfce7; }
+    .report-status.pending { color:#92400e; background:#fef3c7; }
+    .report-status.stale { color:#9a3412; background:#ffedd5; }
+    .report-module-card { display:flex; flex-direction:column; }
+    .report-module-actions { margin-top:auto; padding-top:12px; }
+    .report-module-desc { flex:1; }
+    .report-action-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     @media (max-width: 1200px) { .report-shell { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--clinic-border); } .filter-group { grid-template-columns: repeat(2, 1fr); } .report-module-grid, .summary-strip, .chart-layout, .recommendation-grid { grid-template-columns: repeat(2, 1fr); } }
-    @media (max-width: 768px) { .main-area { padding: 16px; } .sidebar { padding: 18px; } .report-paper { padding: 20px; } .report-letterhead { grid-template-columns: 1fr; } .report-meta { text-align: left; } .filter-group, .report-module-grid, .summary-strip, .chart-layout, .recommendation-grid, .signature-grid { grid-template-columns: 1fr; } .toolbar-title, .report-title, .report-center-title { font-size: 24px; } }
+    @media (max-width: 768px) { .main-area { padding: 16px; } .sidebar { padding: 18px; } .report-paper { padding: 20px; } .report-letterhead { grid-template-columns: 1fr; } .report-meta { text-align: left; } .filter-group, .report-module-grid, .summary-strip, .chart-layout, .recommendation-grid, .signature-grid, .workflow-steps { grid-template-columns: 1fr; } .toolbar-title, .report-title, .report-center-title { font-size: 24px; } }
     @media print { body { background: white !important; color: black !important; } .sidebar, .top-toolbar, .page-header, .no-print, .report-module-grid, .report-center-header { display: none !important; } .report-shell { display: block !important; } .main-area { padding: 0 !important; } .report-paper { border: none !important; box-shadow: none !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; } .summary-box, .chart-card, .recommendation-card { box-shadow: none !important; border: 1px solid #ccc !important; break-inside: avoid; } .report-letterhead { border-bottom: 2px solid #000 !important; } .report-title, .chart-title, .recommendation-title { color: black !important; } .table th { background: #eeeeee !important; color: black !important; } .table td { color: black !important; } .chart-layout { grid-template-columns: 1fr !important; } .recommendation-grid { grid-template-columns: 1fr 1fr 1fr !important; } @page { size: A4 landscape; margin: 12mm; } }
   </style>
 </head>
@@ -183,7 +198,7 @@
         <div>
           <div class="page-header-kicker">Government School Profile Reports</div>
           <h1 class="page-header-title">Nurse Report Center</h1>
-          <p class="page-header-sub">Consolidated report from all saved boxes – with nutritional status chart</p>
+          <p class="page-header-sub">Choose a school year, review each section, then print or download the report.</p>
         </div>
       </div>
 
@@ -192,30 +207,50 @@
           <div class="header-prepared-label">Prepared By</div>
           <div class="header-prepared-name">{{ nurseName }}</div>
         </div>
-        <div class="download-dd">
-          <button class="btn-header" @click="showDownloadMenu = !showDownloadMenu">
-            ⬇️ Download <span class="dd-caret">▼</span>
-          </button>
-          <div class="download-menu" v-if="showDownloadMenu">
-            <button @click="doPrint">
-              <span class="dd-emoji">🖨️</span>
-              <span>
-                <span class="dd-title">Print Consolidated Report</span><br>
-                <span class="dd-sub">On-screen summary for {{ selectedSchoolYear }}</span>
-              </span>
-            </button>
-            <button @click="generateExcelReport">
-              <span class="dd-emoji">📊</span>
-              <span>
-                <span class="dd-title">Generate DepEd Report (Excel)</span><br>
-                <span class="dd-sub">Official Part IX .xlsx for {{ selectedSchoolYear }}</span>
-              </span>
-            </button>
-          </div>
-        </div>
-        <button class="btn-header soft" @click="loadRecords">🔄 Refresh Data</button>
-        <button class="btn-header soft" @click="resetFilters">Reset Filters</button>
+        <button class="btn-header soft" @click="refreshReport">🔄 Refresh</button>
         <a href="nurse-dashboard.php" class="btn-header soft">← Back</a>
+      </div>
+    </div>
+
+    <section class="report-workflow no-print" aria-label="Report preparation steps">
+      <h2>Prepare the school health report</h2>
+      <p>Student counts come from records in ClinicDesk. School facilities and program answers must be entered in the sections below.</p>
+      <div class="report-action-row">
+        <label class="fw-bold" for="reportSchoolYear">School year</label>
+        <select id="reportSchoolYear" v-model="selectedSchoolYear" class="form-select school-year-select" @change="refreshReport">
+          <option v-for="year in schoolYearOptions" :key="year" :value="year">{{ year }}</option>
+        </select>
+        <span v-if="readinessLoading">Checking saved sections...</span>
+        <span v-else-if="readinessError" class="text-danger">{{ readinessError }}</span>
+        <strong v-else>{{ savedCount }} of {{ totalBoxes }} sections saved for {{ selectedSchoolYear }}</strong>
+        <span v-if="staleSectionKeys.length" class="text-warning fw-bold">{{ staleSectionKeys.length }} saved section{{ staleSectionKeys.length === 1 ? '' : 's' }} need updating after student-record changes.</span>
+      </div>
+      <div class="workflow-steps">
+        <div class="workflow-step"><strong>1. Review student data</strong><span>Open the record-based sections and load the latest approved records.</span></div>
+        <div class="workflow-step"><strong>2. Complete school answers</strong><span>Open the school-information sections, answer the questions, and save each one.</span></div>
+        <div class="workflow-step"><strong>3. Check and export</strong><span>Refresh the preview, then print it or download the official Excel template.</span></div>
+      </div>
+      <div class="report-action-row">
+        <button class="btn-main" @click="refreshReport" :disabled="consolidatedLoading">{{ consolidatedLoading ? 'Loading...' : 'Refresh preview' }}</button>
+        <button class="btn-main" @click="doPrint" :disabled="Object.keys(consolidatedReports).length === 0 && !activitySummary">Print report preview</button>
+        <button class="btn-main" @click="generateExcelReport" :disabled="exporting">{{ exporting ? 'Preparing Excel...' : 'Download Excel template' }}</button>
+      </div>
+      <div v-if="exportError" class="alert alert-danger mt-3" role="alert">{{ exportError }}</div>
+      <p class="mt-3 mb-0 small">The Excel file uses current student records plus saved school answers. The printable preview uses saved sections. Review sections marked “Needs update” before exporting so their saved counts match current records.</p>
+    </section>
+
+    <div class="report-center-header no-print">
+      <div class="report-center-kicker">Report sections</div>
+      <h2 class="report-center-title">Review and save each section</h2>
+      <p class="report-center-text">“From records” means the student counts can be loaded. “School answers” means the nurse enters information that is not in a student profile.</p>
+    </div>
+    <div class="report-module-grid no-print">
+      <div v-for="section in reportSections" :key="section.key" class="report-module-card">
+        <div class="d-flex justify-content-between align-items-start gap-2"><div class="report-module-icon">{{ section.icon }}</div><span :class="['report-status', isSectionStale(section.key) ? 'stale' : (isSectionSaved(section.key) ? 'saved' : 'pending')]">{{ isSectionStale(section.key) ? 'Needs update' : (isSectionSaved(section.key) ? 'Saved' : 'Needs review') }}</span></div>
+        <h3 class="report-module-title">{{ section.title }}</h3>
+        <p class="report-module-desc">{{ section.description }}</p>
+        <div class="report-module-meta"><span class="module-chip">{{ section.source }}</span></div>
+        <div class="report-module-actions"><a :href="section.page + '?school_year=' + encodeURIComponent(selectedSchoolYear)" class="btn-main">Open section</a></div>
       </div>
     </div>
 
@@ -237,24 +272,26 @@
       </div>
 
       <div class="report-section no-print">
-        <div class="d-flex gap-2 align-items-center flex-wrap">
-          <select v-model="selectedSchoolYear" class="form-select school-year-select" @change="loadConsolidatedReport">
-            <option value="2021-2022">2021-2022</option>
-            <option value="2022-2023">2022-2023</option>
-            <option value="2023-2024">2023-2024</option>
-            <option value="2025-2026">2025-2026</option>
-            <option value="2027-2028">2027-2028</option>
-          </select>
-          <button class="btn-main" @click="loadConsolidatedReport" :disabled="consolidatedLoading">🔄 Load Consolidated Report</button>
-          <button class="btn-main" @click="sendReportToCloudinary" :disabled="sendingReport">📤 Generate Report</button>
-        </div>
         <div v-if="consolidatedLoading" class="alert alert-info mt-3">Loading consolidated report...</div>
         <div v-if="consolidatedError" class="alert alert-danger mt-3">{{ consolidatedError }}</div>
       </div>
 
       <div v-if="Object.keys(consolidatedReports).length === 0 && !consolidatedLoading && !consolidatedError" class="alert alert-info">
-        No saved reports found for {{ selectedSchoolYear }}. Please go to individual report pages and save data first.
+        No saved school-report sections for {{ selectedSchoolYear }} yet. The live clinic activity below is available; open the sections above to complete the school answers.
       </div>
+
+      <section v-if="activitySummary" class="report-section" aria-label="Live clinic activity">
+        <h2 class="section-title">Clinic activity from learner records</h2>
+        <p class="section-desc">Distinct learners in {{ selectedSchoolYear }}. These totals update when student or nurse monitoring records change.</p>
+        <div class="summary-strip mt-3">
+          <div v-for="metric in activityMetrics" :key="metric.key" class="summary-box">
+            <div class="summary-label">{{ metric.label }}</div>
+            <div class="summary-value">{{ activitySummary[metric.key] ?? 0 }}</div>
+            <p class="summary-helper">{{ metric.description }}</p>
+          </div>
+        </div>
+      </section>
+      <div v-else-if="activityError" class="alert alert-warning no-print">{{ activityError }}</div>
 
       <!-- Nutritional Status Chart (only one) -->
       <div v-if="hasNutritionData" class="chart-layout">
@@ -268,6 +305,7 @@
       <div v-if="consolidatedReports.box1" class="report-section">
         <div class="report-meta">Saved by {{ consolidatedReports.box1.saved_by }} on {{ consolidatedReports.box1.saved_at }}</div>
         <h2 class="report-title">📋 BOX 1 – OKD and LHAS</h2>
+        <div class="mb-2"><strong>Functional referrals by concern:</strong> {{ (consolidatedReports.box1.data.referralConcerns || []).join(', ') || 'Not specified' }}</div>
         <div class="mb-3"><strong>Functional Referral Mechanisms:</strong> {{ (consolidatedReports.box1.data.referralMechanisms || []).join(', ') || 'None' }}</div>
         <h5>Junior High School</h5>
         <div class="table-responsive">
@@ -326,7 +364,9 @@
       <!-- BOX 4 – Mental Health -->
       <div v-if="consolidatedReports.box4" class="report-section">
         <div class="report-meta">Saved by {{ consolidatedReports.box4.saved_by }} on {{ consolidatedReports.box4.saved_at }}</div>
-        <h2 class="report-title">🧠 BOX 4 – School Mental Health</h2>
+        <h2 class="report-title">🧠 TABLE 2 & BOX 4 – School Mental Health</h2>
+        <p><strong>Table 2 · Confirmed suicide-related cases:</strong> See school totals below. These counts require confirmation through the official school process.</p>
+        <div v-if="consolidatedReports.box4.data.mentalHealthCases" class="table-responsive mb-3"><table class="table table-bordered"><thead><tr><th>Case</th><th>Elementary learners</th><th>Elementary personnel</th><th>JHS learners</th><th>JHS personnel</th><th>SHS learners</th><th>SHS personnel</th></tr></thead><tbody><tr v-for="caseType in mentalCaseRows" :key="caseType.key"><td>{{ caseType.label }}</td><td v-for="group in mentalCaseGroups" :key="group.key">{{ consolidatedReports.box4.data.mentalHealthCases?.[caseType.key]?.[group.key] ?? 0 }}</td></tr></tbody></table></div>
         <p><strong>Guidance Office:</strong> {{ consolidatedReports.box4.data.hasGuidanceOffice || 'Not specified' }}</p>
         <p><strong>Counseling (JHS):</strong> Male {{ consolidatedReports.box4.data.counselingJHS?.male || 0 }}, Female {{ consolidatedReports.box4.data.counselingJHS?.female || 0 }}</p>
         <p><strong>Counseling (SHS):</strong> Male {{ consolidatedReports.box4.data.counselingSHS?.male || 0 }}, Female {{ consolidatedReports.box4.data.counselingSHS?.female || 0 }}</p>
@@ -346,19 +386,23 @@
         <div class="report-meta">Saved by {{ consolidatedReports.box5_6.saved_by }} on {{ consolidatedReports.box5_6.saved_at }}</div>
         <h2 class="report-title">👥 BOX 5 & 6 – ARH & Tobacco Control</h2>
         <p><strong>Pregnant Learners (In School):</strong> G7={{ consolidatedReports.box5_6.data.pregnantLearners?.['In School']?.g7 || 0 }}, G8={{ consolidatedReports.box5_6.data.pregnantLearners?.['In School']?.g8 || 0 }}, G9={{ consolidatedReports.box5_6.data.pregnantLearners?.['In School']?.g9 || 0 }}, G10={{ consolidatedReports.box5_6.data.pregnantLearners?.['In School']?.g10 || 0 }}, G11={{ consolidatedReports.box5_6.data.pregnantLearners?.['In School']?.g11 || 0 }}, G12={{ consolidatedReports.box5_6.data.pregnantLearners?.['In School']?.g12 || 0 }}</p>
-        <p><strong>Pregnant Learners (ADM):</strong> G7={{ consolidatedReports.box5_6.data.pregnantLearners?.['On Alternative Delivery Mode (ADM)']?.g7 || 0 }}, etc.</p>
+        <p><strong>Pregnant Learners (ADM):</strong> <span v-for="grade in [7,8,9,10,11,12]" :key="grade">G{{ grade }}={{ consolidatedReports.box5_6.data.pregnantLearners?.['On Alternative Delivery Mode (ADM)']?.['g' + grade] || 0 }}{{ grade < 12 ? ', ' : '' }}</span></p>
         <p><strong>Support Center:</strong> {{ consolidatedReports.box5_6.data.hasSupportCenter || 'Not specified' }}</p>
         <p><strong>Peer Educators:</strong> {{ consolidatedReports.box5_6.data.peerEducators || 0 }}</p>
         <p><strong>IEC Materials:</strong> {{ (consolidatedReports.box5_6.data.iecMaterials || []).join(', ') || 'None' }}</p>
         <p><strong>Stores Selling:</strong> {{ (consolidatedReports.box5_6.data.storesSelling || []).join(', ') || 'None' }}</p>
         <p><strong>Tobacco Violations – Brought:</strong> JHS {{ consolidatedReports.box5_6.data.tobaccoViolations?.jhs?.brought || 0 }}, SHS {{ consolidatedReports.box5_6.data.tobaccoViolations?.shs?.brought || 0 }}</p>
         <p><strong>Referred to care:</strong> JHS {{ consolidatedReports.box5_6.data.tobaccoViolations?.jhs?.referred || 0 }}, SHS {{ consolidatedReports.box5_6.data.tobaccoViolations?.shs?.referred || 0 }}</p>
+        <p v-if="consolidatedReports.box5_6.data.tobaccoIntervention"><strong>Recorded tobacco/vape users:</strong> JHS {{ consolidatedReports.box5_6.data.tobaccoIntervention?.jhs?.users || 0 }}, SHS {{ consolidatedReports.box5_6.data.tobaccoIntervention?.shs?.users || 0 }}. <strong>Received BTI:</strong> JHS {{ consolidatedReports.box5_6.data.tobaccoIntervention?.jhs?.bti || 0 }}, SHS {{ consolidatedReports.box5_6.data.tobaccoIntervention?.shs?.bti || 0 }}.</p>
       </div>
 
-      <!-- BOX 8 & 9 – Food Handling & Feeding -->
+      <!-- BOXES 7–9 – Drug Education, Food Handling & Feeding -->
       <div v-if="consolidatedReports.box8_9" class="report-section">
         <div class="report-meta">Saved by {{ consolidatedReports.box8_9.saved_by }} on {{ consolidatedReports.box8_9.saved_at }}</div>
-        <h2 class="report-title">🍽️ BOX 8 & 9 – Food Handling & Feeding</h2>
+        <h2 class="report-title">🍽️ BOXES 7–9 – Drug Education, Food & Feeding</h2>
+        <p><strong>Preventive drug education:</strong> {{ consolidatedReports.box8_9.data.drugEducation || 'Not specified' }}</p>
+        <p><strong>Program components:</strong> {{ (consolidatedReports.box8_9.data.drugComponents || []).join(', ') || 'None recorded' }}</p>
+        <p v-if="consolidatedReports.box8_9.data.drugLifeSkills"><strong>Previous-year life skills training:</strong> <span v-for="grade in [7,8,9,10,11,12]" :key="grade">G{{ grade }} {{ consolidatedReports.box8_9.data.drugLifeSkills?.['g'+grade] || 0 }}{{ grade < 12 ? ', ' : '' }}</span></p>
         <p><strong>Canteen:</strong> {{ consolidatedReports.box8_9.data.hasCanteen || 'Not specified' }}</p>
         <div v-if="consolidatedReports.box8_9.data.hasCanteen === 'Yes'">
           <p><strong>Managed by:</strong> {{ consolidatedReports.box8_9.data.canteenManager || 'Not specified' }} <span v-if="consolidatedReports.box8_9.data.canteenManager === 'Others'">({{ consolidatedReports.box8_9.data.canteenManagerOther }})</span></p>
@@ -461,49 +505,6 @@
       </div>
     </section>
 
-    <!-- Original Student Nutritional Summary (kept but not printed by default) -->
-    <div class="report-center-header no-print">
-      <div class="report-center-kicker">Report Modules</div>
-      <h2 class="report-center-title">Separated Report Sections</h2>
-      <p class="report-center-text">Use individual links to edit or view specific reports. Use the consolidated report above for printing all data.</p>
-    </div>
-    <div class="report-module-grid no-print">
-      <div class="report-module-card"><div class="report-module-icon">📋</div><h3 class="report-module-title">OKD and LHAS</h3><p class="report-module-desc">Oplan Kalusugan sa DepEd and Learners Health Assessment and Screening report section.</p><div class="report-module-meta"><span class="module-chip">JHS</span><span class="module-chip">SHS</span></div><div class="report-module-actions"><a href="report-box1-lhas.php" class="btn-main">Open</a></div></div>
-      <div class="report-module-card"><div class="report-module-icon">🩺</div><h3 class="report-module-title">Health and Nutrition</h3><p class="report-module-desc">School-based immunization and nutritional status summary.</p><div class="report-module-meta"><span class="module-chip">Immunization</span><span class="module-chip">Nutrition</span></div><div class="report-module-actions"><a href="report-table1-health-nutrition-a.php" class="btn-main">Open</a></div></div>
-      <div class="report-module-card"><div class="report-module-icon">💊</div><h3 class="report-module-title">Deworming</h3><p class="report-module-desc">Deworming records and WIFA supplementation data.</p><div class="report-module-meta"><span class="module-chip">Deworming</span><span class="module-chip">WIFA</span></div><div class="report-module-actions"><a href="report-table1-health-nutrition-b.php" class="btn-main">Open</a></div></div>
-      <div class="report-module-card"><div class="report-module-icon">🏥</div><h3 class="report-module-title">School Clinic</h3><p class="report-module-desc">School clinic information, equipment, and water supply.</p><div class="report-module-meta"><span class="module-chip">Clinic</span><span class="module-chip">Water</span></div><div class="report-module-actions"><a href="report-box2-box3.php" class="btn-main">Open</a></div></div>
-      <div class="report-module-card"><div class="report-module-icon">🧠</div><h3 class="report-module-title">School Mental Health</h3><p class="report-module-desc">Mental health cases, counseling, and teacher training.</p><div class="report-module-meta"><span class="module-chip">Mental Health</span></div><div class="report-module-actions"><a href="report-table2-box4-mental-health.php" class="btn-main">Open</a></div></div>
-      <div class="report-module-card"><div class="report-module-icon">👥</div><h3 class="report-module-title">ARH & Tobacco</h3><p class="report-module-desc">Adolescent reproductive health and tobacco control.</p><div class="report-module-meta"><span class="module-chip">ARH</span><span class="module-chip">Tobacco</span></div><div class="report-module-actions"><a href="report-box5-box6.php" class="btn-main">Open</a></div></div>
-      <div class="report-module-card"><div class="report-module-icon">🍽️</div><h3 class="report-module-title">Food Handling</h3><p class="report-module-desc">Canteen, kitchen, feeding program, and resources.</p><div class="report-module-meta"><span class="module-chip">Food</span><span class="module-chip">Feeding</span></div><div class="report-module-actions"><a href="report-box8-box9.php" class="btn-main">Open</a></div></div>
-      <div class="report-module-card"><div class="report-module-icon">♻️</div><h3 class="report-module-title">Solid Waste Management</h3><p class="report-module-desc">Waste management and menstrual hygiene.</p><div class="report-module-meta"><span class="module-chip">Waste</span><span class="module-chip">Hygiene</span></div><div class="report-module-actions"><a href="report-box10-box11.php" class="btn-main">Open</a></div></div>
-    </div>
-
-    <!-- INCOMPLETE REPORT MODAL -->
-    <div v-if="showIncompleteModal" class="incomplete-overlay no-print" @click.self="showIncompleteModal = false">
-      <div class="incomplete-modal">
-        <div class="incomplete-head">
-          <h5>⚠️ Report Not Complete</h5>
-          <button class="incomplete-close" @click="showIncompleteModal = false">&times;</button>
-        </div>
-        <div class="incomplete-body">
-          <p class="mb-2">
-            You've saved <strong>{{ savedCount }}</strong> of <strong>{{ totalBoxes }}</strong> boxes for
-            <strong>{{ selectedSchoolYear }}</strong>. All boxes must be saved before generating the report.
-          </p>
-          <p class="incomplete-sub">Please fill and save these boxes first:</p>
-          <ul class="incomplete-list">
-            <li v-for="b in missingBoxes" :key="b.key">
-              <span>{{ b.label }}</span>
-              <a :href="b.page" class="incomplete-link">Open →</a>
-            </li>
-          </ul>
-        </div>
-        <div class="incomplete-foot">
-          <button class="btn-header soft" style="color:#0f766e;border-color:#0f766e;" @click="showIncompleteModal = false">Close</button>
-        </div>
-      </div>
-    </div>
-
   </main>
 </div>
 
@@ -517,16 +518,48 @@ createApp({
       nurseName: "",
       activeRole: "",
       currentDate: new Date().toLocaleDateString(),
-      selectedSchoolYear: "2021-2022",
-      showDownloadMenu: false,
-      showIncompleteModal: false,
-      missingBoxes: [],
+      selectedSchoolYear: "",
+      schoolYearOptions: [],
+      readinessLoading: false,
+      readinessError: '',
+      activitySummary: null,
+      activityError: '',
+      activityMetrics: [
+        {key:'learners', label:'Learners', description:'Unique LRNs in the student register'},
+        {key:'nutrition_followup', label:'BMI follow-up', description:'Wasted, severely wasted, overweight or obese'},
+        {key:'immunized', label:'Immunized', description:'At least one recorded vaccine given'},
+        {key:'screened', label:'Screened', description:'At least one completed health screening'},
+        {key:'wifa_given', label:'WIFA taken', description:'SF8 baseline or nurse-recorded dose'},
+        {key:'dewormed', label:'Dewormed', description:'SF8 baseline or nurse-recorded treatment'},
+        {key:'feeding_followup', label:'Feeding follow-up', description:'At least one follow-up measurement'}
+      ],
+      exportError: '',
+      exporting: false,
+      savedSectionKeys: [],
+      staleSectionKeys: [],
+      reportSections: [
+        { key:'box1', icon:'📋', title:'Box 1 · Health screening', description:'Screening, findings and referrals from learner records; confirm referral mechanisms.', source:'From records + school answers', page:'report-box1-lhas.php' },
+        { key:'table1_a', icon:'🩺', title:'Tables 1.A–1.B · Immunization and nutrition', description:'Review vaccine counts and BMI categories for the selected year.', source:'From records', page:'report-table1-health-nutrition-a.php' },
+        { key:'table1_b', icon:'💊', title:'Tables 1.C–1.D · Deworming and WIFA', description:'Review imported baselines and nurse-recorded doses by period.', source:'From records', page:'report-table1-health-nutrition-b.php' },
+        { key:'box2_3', icon:'🏥', title:'Boxes 2–3 · Clinic and water', description:'Enter clinic equipment, SDO visits and school water information.', source:'School answers', page:'report-box2-box3.php' },
+        { key:'box4', icon:'🧠', title:'Table 2 and Box 4 · Mental health', description:'Record counseling visits; review learner-group counts, confirmed cases and staff training.', source:'From records + school answers', page:'report-table2-box4-mental-health.php' },
+        { key:'box5_6', icon:'👥', title:'Boxes 5–6 · ARH and tobacco', description:'Review learner counts, then enter support-center, signage and store information.', source:'From records + school answers', page:'report-box5-box6.php' },
+        { key:'box8_9', icon:'🍽️', title:'Boxes 7–9 · Drug education and feeding', description:'Enter drug prevention, canteen, kitchen, feeding fund and agriculture details.', source:'School answers', page:'report-box8-box9.php' },
+        { key:'box10_11', icon:'♻️', title:'Boxes 10–11 · Waste and hygiene', description:'Enter waste practices, participating groups and pad availability.', source:'School answers', page:'report-box10-box11.php' }
+      ],
       savedCount: 0,
       totalBoxes: 8,
       consolidatedReports: {},
       consolidatedLoading: false,
       consolidatedError: null,
       lhasRows: ["Nutritional Assessment","Health History","Vision Screening","Hearing Screening","Oral Health","CARS","Rapid HEEADSSS"],
+      mentalCaseRows: [
+        {key:'deathInside',label:'Deaths within school'}, {key:'deathOutside',label:'Deaths outside school'},
+        {key:'attemptInside',label:'Attempts within school'}, {key:'attemptOutside',label:'Attempts outside school'}
+      ],
+      mentalCaseGroups: [
+        {key:'elemLearners'},{key:'elemPersonnel'},{key:'jhsLearners'},{key:'jhsPersonnel'},{key:'shsLearners'},{key:'shsPersonnel'}
+      ],
       nutritionChart: null,
       sendingReport: false,
       records: [], loading: false, searchTerm: "", riskFilter: "", bmiFilter: "", gradeFilter: "",
@@ -546,17 +579,56 @@ createApp({
     this.activeRole = role;
     this.nurseName = localStorage.getItem("local_full_name") || role || "ClinicDesk User";
     this.currentDate = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-    document.addEventListener("click", (e) => {
-      if (!e.target.closest(".download-dd")) this.showDownloadMenu = false;
-    });
+    this.loadSchoolYears();
   },
   methods: {
+    isSectionSaved(key) { return this.savedSectionKeys.includes(key); },
+    isSectionStale(key) { return this.staleSectionKeys.includes(key); },
+    async loadSchoolYears() {
+      try {
+        const res = await fetch('api/get_school_years.php?t=' + Date.now());
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Could not load school years.');
+        this.schoolYearOptions = (data.years || []).map(y => y.year_label);
+        this.selectedSchoolYear = data.active && this.schoolYearOptions.includes(data.active)
+          ? data.active : (this.schoolYearOptions[0] || '');
+        if (this.selectedSchoolYear) await this.refreshReport();
+      } catch(e) { this.consolidatedError = e.message; }
+    },
+    async refreshReport() {
+      if (!this.selectedSchoolYear) return;
+      await Promise.all([this.loadReadiness(), this.loadConsolidatedReport(), this.loadActivitySummary()]);
+    },
+    async loadActivitySummary() {
+      this.activitySummary = null;
+      this.activityError = '';
+      try {
+        const res = await fetch('api/get_clinic_report_summary.php?school_year=' + encodeURIComponent(this.selectedSchoolYear) + '&t=' + Date.now(), {headers:{Authorization:'Bearer ' + localStorage.getItem('local_id_token')}});
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Could not load clinic activity.');
+        this.activitySummary = data.metrics || {};
+      } catch(e) { this.activityError = e.message; }
+    },
+    async loadReadiness() {
+      this.readinessLoading = true;
+      this.readinessError = '';
+      try {
+        const res = await fetch('api/check_report_completeness.php?school_year=' + encodeURIComponent(this.selectedSchoolYear) + '&t=' + Date.now(), {headers:{Authorization:'Bearer ' + localStorage.getItem('local_id_token')}});
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Could not check saved sections.');
+        this.savedSectionKeys = (data.saved || []).map(item => item.key);
+        this.staleSectionKeys = (data.stale || []).map(item => item.key);
+        this.savedCount = data.saved_count || 0;
+        this.totalBoxes = data.total || this.reportSections.length;
+      } catch(e) { this.readinessError = e.message; }
+      this.readinessLoading = false;
+    },
     lhasTotal(row) { if (!row) return 0; return (row.referredSchool||0)+(row.referredLGU||0)+(row.referredPrivate||0)+(row.referredOthers||0); },
     async loadConsolidatedReport() {
       this.consolidatedLoading = true;
       this.consolidatedError = null;
       try {
-        const res = await fetch(`api/get_all_reports.php?school_year=${encodeURIComponent(this.selectedSchoolYear)}&cache_buster=${Date.now()}`);
+        const res = await fetch(`api/get_all_reports.php?school_year=${encodeURIComponent(this.selectedSchoolYear)}&cache_buster=${Date.now()}`, {headers:{Authorization:'Bearer ' + localStorage.getItem('local_id_token')}});
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.success) {
@@ -632,38 +704,41 @@ createApp({
       this.sendingReport = false;
     },
     doPrint() {
-      this.showDownloadMenu = false;
       window.print();
     },
 
     async generateExcelReport() {
-      this.showDownloadMenu = false;
       if (!this.selectedSchoolYear) {
-        alert("Please select a school year first.");
+        this.exportError = 'Select a school year first.';
         return;
       }
+      this.exportError = '';
+      this.exporting = true;
 
-      // Completeness gate: all 8 boxes must be saved for this school year.
-      try {
-        const res = await fetch("api/check_report_completeness.php?school_year="
-          + encodeURIComponent(this.selectedSchoolYear) + "&t=" + Date.now());
-        const data = await res.json();
-        if (data.success && !data.complete) {
-          this.missingBoxes = data.missing || [];
-          this.savedCount = data.saved_count || 0;
-          this.totalBoxes = data.total || 8;
-          this.showIncompleteModal = true;
-          return; // block generation
-        }
-      } catch (e) {
-        alert("Could not verify report completeness: " + e.message);
-        return;
-      }
-
-      // All boxes saved -> proceed with the download + print.
+      // The workbook can include current student records even when a school-answer
+      // section is still pending. The readiness cards show what needs review.
       const url = "api/generate_deped_report.php?school_year=" + encodeURIComponent(this.selectedSchoolYear);
-      window.location.href = url;
-      setTimeout(() => { window.print(); }, 1200);
+      try {
+        const response = await fetch(url, {
+          headers: { Authorization: "Bearer " + localStorage.getItem("local_id_token") }
+        });
+        if (!response.ok || (response.headers.get('Content-Type') || '').includes('application/json')) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.message || "Could not generate the Excel report.");
+        }
+        const blobUrl = URL.createObjectURL(await response.blob());
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = "ClinicDesk_Report_" + this.selectedSchoolYear + ".xlsx";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      } catch (error) {
+        this.exportError = error.message || 'Could not create the Excel report. Please try again.';
+      } finally {
+        this.exporting = false;
+      }
     },
 
     printReport() { window.print(); },
@@ -678,5 +753,6 @@ createApp({
   }
 }).mount("#app");
 </script>
+<script src="assets/table-pagination.js" defer></script>
 </body>
 </html>

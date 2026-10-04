@@ -1,46 +1,46 @@
 {
   "Vitamin A Deficiency": {
-    "recommendation_text": "Student shows signs of Vitamin A deficiency. Refer for clinical confirmation and dietary counseling.",
+    "recommendation_text": "The model flagged a possible vitamin A-related concern. Review the learner's recorded findings and arrange further assessment if appropriate.",
     "recommended_foods": "Camote tops, squash, malunggay, carrots, egg yolk, liver",
-    "intervention_type": "Dietary Supplementation"
+    "intervention_type": "Nurse Review"
   },
   "Vitamin D Deficiency": {
-    "recommendation_text": "Low Vitamin D levels suspected. Encourage 15-20 minutes of morning sun exposure daily and dietary changes.",
+    "recommendation_text": "The model flagged a possible vitamin D-related concern. Review the measured result and discuss appropriate follow-up under the clinic protocol.",
     "recommended_foods": "Milk, canned sardines, egg yolk, fortified cereals",
-    "intervention_type": "Dietary Supplementation + Sun Exposure"
+    "intervention_type": "Nurse Review"
   },
   "Vitamin C Deficiency": {
-    "recommendation_text": "Signs consistent with Vitamin C deficiency (bleeding gums, fatigue). Increase citrus fruit intake.",
+    "recommendation_text": "The model flagged a possible vitamin C-related concern. Review the learner's observations and consider dietary counseling or referral as appropriate.",
     "recommended_foods": "Guava, calamansi, orange, tomato, green leafy vegetables",
     "intervention_type": "Dietary Modification"
   },
   "Vitamin B12 Deficiency": {
-    "recommendation_text": "Possible Vitamin B12 deficiency. Recommend increase in animal protein intake and clinical referral.",
+    "recommendation_text": "The model flagged a possible vitamin B12-related concern. Review the recorded measurements and consider dietary counseling or referral as appropriate.",
     "recommended_foods": "Beef, chicken liver, eggs, dairy products, fish",
-    "intervention_type": "Dietary Supplementation"
+    "intervention_type": "Nurse Review"
   },
   "Iron Deficiency": {
-    "recommendation_text": "Iron deficiency anemia suspected. Prioritise iron-rich foods and Vitamin C to aid absorption.",
+    "recommendation_text": "The model flagged a possible iron-related concern. Review symptoms and measured results. Discuss iron-rich foods; ferrous sulfate is only for an independently assessed and authorized care plan under the clinic protocol.",
     "recommended_foods": "Malunggay, kangkong, beef liver, mongo, camote tops, sardines",
-    "intervention_type": "Iron Supplementation + WIFA"
+    "intervention_type": "Nurse Review · Ferrous Sulfate Only if Authorized"
   },
   "Folate Deficiency": {
-    "recommendation_text": "Folate deficiency indicated. Increase dark green vegetable consumption.",
+    "recommendation_text": "The model flagged a possible folate-related concern. Review the learner's records and consider dietary counseling or referral as appropriate.",
     "recommended_foods": "Malunggay, spinach, asparagus, mongo beans, fortified bread",
-    "intervention_type": "Dietary Supplementation"
+    "intervention_type": "Nurse Review"
   },
   "Iodine Deficiency": {
-    "recommendation_text": "Possible iodine deficiency. Ensure use of iodized salt and seafood intake.",
+    "recommendation_text": "The model flagged a possible iodine-related concern. Review the learner's records and consider dietary counseling as appropriate.",
     "recommended_foods": "Iodized salt, fish, seaweed, shrimp",
     "intervention_type": "Dietary Modification + Monitoring"
   },
   "Severe Malnutrition": {
-    "recommendation_text": "Severe malnutrition risk detected. Immediate referral to health center required. Enroll in school feeding program.",
-    "recommended_foods": "High-calorie therapeutic foods, fortified porridge, RUTF if available",
-    "intervention_type": "Urgent Referral + Feeding Program"
+    "recommendation_text": "The model flagged a nutrition concern needing prompt nurse review. Verify recorded measurements and use the school's referral pathway when appropriate.",
+    "recommended_foods": "",
+    "intervention_type": "Prompt Nurse Review"
   },
   "Normal": {
-    "recommendation_text": "No nutritional deficiency detected. Maintain a balanced diet and healthy lifestyle.",
+    "recommendation_text": "The model did not flag a concern from the entered data. Continue routine review; this result does not rule out a health issue.",
     "recommended_foods": "Balanced diet: vegetables, fruits, protein, grains, dairy",
     "intervention_type": "Health Promotion"
   }

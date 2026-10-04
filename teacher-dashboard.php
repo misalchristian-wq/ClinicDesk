@@ -511,6 +511,7 @@
         localStorage.removeItem("local_email");
         localStorage.removeItem("local_role");
         localStorage.removeItem("local_login_time");
+      localStorage.removeItem("local_id_token");
 
         window.location.href = "login.php";
       }

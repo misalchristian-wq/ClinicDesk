@@ -7,6 +7,7 @@ error_reporting(E_ALL);
 
 try {
     include __DIR__ . "/../db.php";
+    require_once __DIR__ . '/who_classifier.php';
 
     function hasText($value, $keyword) {
         return str_contains(strtolower(trim($value ?? "")), strtolower($keyword));
@@ -162,6 +163,8 @@ try {
         exit;
     }
 
+    $student['height_for_age'] = is_numeric($student['age']) && is_numeric($student['height_m'])
+        ? whoHeightForAge($student['height_m'], (float)$student['age'] * 12, $student['sex']) : '';
     $student["temporary_deficiency"] = getTemporaryDeficiency($student["bmi_category"], $student["height_for_age"]);
     $student["risk_level"] = getRiskLevel($student["bmi_category"], $student["height_for_age"]);
     $student["temporary_recommendation"] = getRecommendation($student["bmi_category"], $student["height_for_age"]);

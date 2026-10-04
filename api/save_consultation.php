@@ -1,118 +1,67 @@
 <?php
-header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type");
-header("Access-Control-Allow-Methods: POST");
+declare(strict_types=1);
 
-include "db.php";
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+ini_set('display_errors', '0');
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse']);
 
-// Get or create default upload_id for consultations
-$defaultUploadId = null;
-$checkDefault = $conn->query("SELECT upload_id FROM sf8_uploads WHERE file_name = 'CONSULTATION_DEFAULT' LIMIT 1");
-if ($checkDefault && $checkDefault->num_rows > 0) {
-    $row = $checkDefault->fetch_assoc();
-    $defaultUploadId = $row['upload_id'];
-} else {
-    // Create default upload record
-    $conn->query("INSERT INTO sf8_uploads (file_name, cloudinary_url, uploaded_by_email, status) VALUES ('CONSULTATION_DEFAULT', '', 'system@clinicdesk.com', 'Approved')");
-    $defaultUploadId = $conn->insert_id;
-}
-
-$raw_input = file_get_contents("php://input");
-if (empty($raw_input)) {
-    echo json_encode(["success" => false, "message" => "No data received"]);
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Use POST to save a consultation.']);
     exit;
 }
 
-$data = json_decode($raw_input, true);
+try {
+    $data = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($data)) throw new InvalidArgumentException('Enter valid consultation details.');
+    $recordId = filter_var($data['record_id'] ?? null, FILTER_VALIDATE_INT);
+    if (!$recordId || $recordId < 1) throw new InvalidArgumentException('Select a student first.');
 
-if (!$data) {
-    echo json_encode(["success" => false, "message" => "Invalid JSON"]);
-    exit;
+    $symptoms = trim((string)($data['symptoms'] ?? ''));
+    $careGiven = trim((string)($data['care_given'] ?? ''));
+    $notes = trim((string)($data['notes'] ?? ''));
+    if ($symptoms === '') throw new InvalidArgumentException('Record the learner\'s reported symptoms or reason for visit.');
+    if (mb_strlen($symptoms) > 4000 || mb_strlen($careGiven) > 4000 || mb_strlen($notes) > 4000) {
+        throw new InvalidArgumentException('Consultation text is too long.');
+    }
+    $followUp = trim((string)($data['follow_up_date'] ?? ''));
+    if ($followUp !== '') {
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $followUp);
+        if (!$date || $date->format('Y-m-d') !== $followUp) {
+            throw new InvalidArgumentException('Enter a valid follow-up date.');
+        }
+    } else {
+        $followUp = null;
+    }
+
+    require __DIR__ . '/db.php';
+    $conn->set_charset('utf8mb4');
+    $student = $conn->prepare('SELECT record_id FROM sf8_student_records WHERE record_id=? LIMIT 1');
+    $student->bind_param('i', $recordId);
+    $student->execute();
+    $exists = (bool)$student->get_result()->fetch_assoc();
+    $student->close();
+    if (!$exists) throw new OutOfBoundsException('Student record was not found.');
+
+    $nurseId = (int)(getCurrentUser()['account_id'] ?? 0);
+    $stmt = $conn->prepare('INSERT INTO consultations
+        (record_id, symptoms, care_given, follow_up_date, notes, recorded_by_account_id)
+        VALUES (?, ?, ?, ?, ?, ?)');
+    $stmt->bind_param('issssi', $recordId, $symptoms, $careGiven, $followUp, $notes, $nurseId);
+    $stmt->execute();
+    $consultationId = $stmt->insert_id;
+    $stmt->close();
+    echo json_encode(['success' => true, 'message' => 'Consultation saved.', 'consultation_id' => $consultationId]);
+} catch (Throwable $e) {
+    $expected = $e instanceof InvalidArgumentException || $e instanceof OutOfBoundsException;
+    if (!$expected) error_log('ClinicDesk consultation save: ' . $e->getMessage());
+    http_response_code($e instanceof InvalidArgumentException ? 422 : ($e instanceof OutOfBoundsException ? 404 : 503));
+    echo json_encode(['success' => false, 'message' => $expected
+        ? $e->getMessage() : 'Consultation could not be saved. Please try again.']);
+} finally {
+    if (isset($conn) && $conn instanceof mysqli) $conn->close();
 }
-
-$record_id = isset($data["record_id"]) ? intval($data["record_id"]) : 0;
-$common_illnesses = isset($data["common_illnesses"]) ? trim($data["common_illnesses"]) : "";
-$symptoms = isset($data["symptoms"]) ? trim($data["symptoms"]) : "";
-$medication = isset($data["medication"]) ? trim($data["medication"]) : "";
-$notes = isset($data["notes"]) ? trim($data["notes"]) : "";
-
-if ($record_id <= 0) {
-    echo json_encode(["success" => false, "message" => "Record ID required"]);
-    exit;
-}
-
-// Get student info
-$studentStmt = $conn->prepare("SELECT learner_name, sex, age, grade_level, section FROM sf8_student_records WHERE record_id = ?");
-$studentStmt->bind_param("i", $record_id);
-$studentStmt->execute();
-$student = $studentStmt->get_result()->fetch_assoc();
-$studentStmt->close();
-
-if (!$student) {
-    echo json_encode(["success" => false, "message" => "Student not found"]);
-    exit;
-}
-
-$hasFindings = (!empty($common_illnesses) || !empty($symptoms)) ? 1 : 0;
-
-// Save to consultations table
-$stmt = $conn->prepare("INSERT INTO consultations (record_id, common_illnesses, symptoms, medication, notes) VALUES (?, ?, ?, ?, ?)");
-$stmt->bind_param("issss", $record_id, $common_illnesses, $symptoms, $medication, $notes);
-$stmt->execute();
-$stmt->close();
-
-// Check if OKD/LHAS record already exists for this student
-$checkStmt = $conn->prepare("SELECT okd_lhas_id FROM okd_lhas_records WHERE student_record_id = ? AND screening_type = 'Consultation' LIMIT 1");
-$checkStmt->bind_param("i", $record_id);
-$checkStmt->execute();
-$existing = $checkStmt->get_result()->fetch_assoc();
-$checkStmt->close();
-
-if ($existing) {
-    // Update existing record - use default upload_id
-    $updateStmt = $conn->prepare("
-        UPDATE okd_lhas_records 
-        SET upload_id = ?,
-            masterlisted = masterlisted + 1,
-            screened = screened + 1,
-            findings = findings + ?,
-            remarks = CONCAT(IFNULL(remarks, ''), '\nConsultation: ', ?)
-        WHERE okd_lhas_id = ?
-    ");
-    $updateStmt->bind_param("iisi", $defaultUploadId, $hasFindings, $notes, $existing['okd_lhas_id']);
-    $updateStmt->execute();
-    $updateStmt->close();
-} else {
-    // Insert new OKD/LHAS record with default upload_id
-    $learnerName = $student['learner_name'];
-    $sex = $student['sex'];
-    $age = $student['age'];
-    $screeningType = "Consultation";
-    $masterlisted = 1;
-    $screened = 1;
-    $findings = $hasFindings;
-    $remarks = "Consultation: " . $notes;
-    
-    $insertStmt = $conn->prepare("
-        INSERT INTO okd_lhas_records (
-            upload_id, student_record_id, lrn, learner_name, sex, age, screening_type,
-            masterlisted, screened, findings, remarks
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ");
-    $insertStmt->bind_param("iisssssiiis", 
-        $defaultUploadId, $record_id, $record_id, $learnerName, $sex, $age, $screeningType,
-        $masterlisted, $screened, $findings, $remarks
-    );
-    $insertStmt->execute();
-    $insertStmt->close();
-}
-
-echo json_encode([
-    "success" => true,
-    "message" => "Consultation saved successfully!",
-    "has_findings" => $hasFindings
-]);
-
-$conn->close();
-?>

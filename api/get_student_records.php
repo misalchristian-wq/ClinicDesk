@@ -7,6 +7,7 @@ error_reporting(E_ALL);
 
 try {
     include __DIR__ . "/../db.php";
+    require_once __DIR__ . '/who_classifier.php';
 
     function hasText($value, $keyword) {
         return str_contains(strtolower(trim($value ?? "")), strtolower($keyword));
@@ -103,6 +104,7 @@ try {
     $sql = "
         SELECT 
             record_id,
+            lrn,
             upload_id,
             school_name,
             district,
@@ -117,6 +119,10 @@ try {
             birthdate,
             age,
             sex,
+            profile_status,
+            is_muslim,
+            is_pwd,
+            is_ip,
             weight_kg,
             height_m,
             height_squared,
@@ -142,6 +148,8 @@ try {
     $records = [];
 
     while ($row = $result->fetch_assoc()) {
+        $row['height_for_age'] = is_numeric($row['age']) && is_numeric($row['height_m'])
+            ? whoHeightForAge($row['height_m'], (float)$row['age'] * 12, $row['sex']) : '';
         $row["temporary_deficiency"] = getTemporaryDeficiency($row["bmi_category"], $row["height_for_age"]);
         $row["risk_level"] = getRiskLevel($row["bmi_category"], $row["height_for_age"]);
         $row["temporary_recommendation"] = getRecommendation($row["bmi_category"], $row["height_for_age"]);

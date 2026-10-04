@@ -1,8 +1,5 @@
 <?php
-require_once __DIR__ . '/bootstrap.php';
+// Configuration and secret values must never be exposed over HTTP.
+http_response_code(404);
 header('Content-Type: application/json');
-echo json_encode([
-    'LOCAL_JWT_SECRET' => LOCAL_JWT_SECRET,
-    'FIREBASE_CREDENTIALS' => FIREBASE_CREDENTIALS,
-    'file_exists' => file_exists(FIREBASE_CREDENTIALS)
-]);
+echo json_encode(['success' => false, 'message' => 'Not found.']);

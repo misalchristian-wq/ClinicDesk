@@ -1,8 +1,9 @@
 <?php
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
-
-include "db.php";
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse', 'School Admin']);
+include __DIR__ . "/../db.php";
 
 $school_year = $_GET["school_year"] ?? "";
 

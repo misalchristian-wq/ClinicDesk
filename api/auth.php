@@ -1,141 +1,82 @@
 <?php
-// api/auth.php – Authentication Middleware
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
-
-require_once __DIR__ . '/bootstrap.php'; // loads .env and Composer autoload
+require_once __DIR__ . '/bootstrap.php';
 
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Kreait\Firebase\Factory;
-use Kreait\Firebase\Auth as FirebaseAuth;
 
-// Secret key for local JWT (must be defined in .env)
-define('LOCAL_JWT_SECRET', $_ENV['LOCAL_JWT_SECRET'] ?? '');
-
-if (empty(LOCAL_JWT_SECRET)) {
-    http_response_code(500);
-    header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'message' => 'Server configuration error: JWT secret missing']);
-    exit;
-}
-
-/**
- * Main authentication function – call at the beginning of every protected endpoint.
- */
-function authenticate() {
-    $headers = getallheaders();
-    $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
-
-    if (empty($authHeader)) {
-        sendUnauthorized('Missing Authorization header');
-    }
-
-    if (!preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
-        sendUnauthorized('Invalid Authorization header format. Use: Bearer <token>');
-    }
-    $token = $matches[1];
-
-    // Try Firebase token (teachers)
-    $userData = verifyFirebaseToken($token);
-    if ($userData) {
-        $_SERVER['user_data'] = $userData;
-        return;
-    }
-
-    // Try local JWT (nurses, admins)
-    $userData = verifyLocalJWT($token);
-    if ($userData) {
-        $_SERVER['user_data'] = $userData;
-        return;
-    }
-
-    sendUnauthorized('Invalid or expired token');
-}
-
-/**
- * Verify Firebase ID token.
- */
-function verifyFirebaseToken($token) {
-
-if (!file_exists(FIREBASE_CREDENTIALS)) {
-        // No Firebase credentials – skip
-        return null;
-    }
+function authenticate(): void {
+    $header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+    if (!preg_match('/^Bearer ([^\s]+)$/', $header, $match)) sendUnauthorized('Please sign in again.');
+    $token = $match[1];
     try {
-
-    
-        $factory = (new Factory)
-            ->withServiceAccount(FIREBASE_CREDENTIALS);
-        $auth = $factory->createAuth();
-        $verifiedIdToken = $auth->verifyIdToken($token);
-        $uid = $verifiedIdToken->claims()->get('sub');
-        $email = $verifiedIdToken->claims()->get('email');
-        
-        return [
-            'type' => 'firebase',
-            'uid' => $uid,
-            'email' => $email,
-            'role' => 'Teacher'
-        ];
-    } catch (Exception $e) {
-        return null;
+        $parts = explode('.', $token);
+        $jwtHeader = json_decode(base64_decode(strtr($parts[0] ?? '', '-_', '+/')), true);
+        $user = ($jwtHeader['alg'] ?? '') === 'HS256' ? verifyLocalJWT($token) : verifyFirebaseToken($token);
+    } catch (Throwable $e) {
+        http_response_code(503);
+        echo json_encode(['success' => false, 'message' => 'Secure authentication is not configured. Contact the administrator.']);
+        exit;
     }
+    if (!$user) sendUnauthorized('Your session is invalid or expired. Please sign in again.');
+    $_SERVER['user_data'] = $user;
 }
 
-/**
- * Verify local JWT issued after local login.
- */
-function verifyLocalJWT($token) {
+function verifyFirebaseToken(string $token): ?array {
+    $credentials = getenv('FIREBASE_CREDENTIALS') ?: __DIR__ . '/firebase-service-account.json';
+    if (!is_file($credentials)) return null;
     try {
-        $decoded = JWT::decode($token, new Key(LOCAL_JWT_SECRET, 'HS256'));
-        $decodedArray = (array) $decoded;
-        
-        if (isset($decodedArray['exp']) && $decodedArray['exp'] < time()) {
-            return null;
-        }
-        
-        return [
-            'type' => 'local',
-            'account_id' => $decodedArray['account_id'],
-            'full_name' => $decodedArray['full_name'],
-            'email' => $decodedArray['email'],
-            'role' => $decodedArray['role']
-        ];
-    } catch (Exception $e) {
+        $auth = (new Factory)->withServiceAccount($credentials)->createAuth();
+        $verified = $auth->verifyIdToken($token, true);
+        $email = (string)$verified->claims()->get('email');
+        if ($email === '') return null;
+        return ['type' => 'firebase', 'uid' => $verified->claims()->get('sub'), 'email' => $email, 'role' => 'Teacher'];
+    } catch (Throwable $e) {
         return null;
     }
 }
 
-/**
- * Send 401 JSON response and exit.
- */
-function sendUnauthorized($message) {
+function verifyLocalJWT(string $token): ?array {
+    $secret = clinicJwtSecret();
+    try {
+        $claims = (array)JWT::decode($token, new Key($secret, 'HS256'));
+        if (($claims['iss'] ?? '') !== 'clinicdesk' || ($claims['aud'] ?? '') !== 'clinicdesk-sf8' || !isset($claims['exp'], $claims['account_id'])) return null;
+    } catch (Throwable $e) {
+        return null;
+    }
+    // Re-read the role/status so account deactivation takes effect immediately.
+    require __DIR__ . '/db.php';
+    $stmt = $conn->prepare('SELECT account_id, full_name, email, role, status FROM local_accounts WHERE account_id = ? LIMIT 1');
+    $stmt->bind_param('i', $claims['account_id']);
+    $stmt->execute();
+    $user = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    $conn->close();
+    if (!$user || $user['status'] !== 'Active') return null;
+    $user['type'] = 'local';
+    return $user;
+}
+
+function clinicIssueLocalToken(array $user): string {
+    $now = time();
+    return JWT::encode(['iss' => 'clinicdesk', 'aud' => 'clinicdesk-sf8', 'iat' => $now, 'exp' => $now + 3600,
+        'account_id' => (int)$user['account_id']], clinicJwtSecret(), 'HS256');
+}
+
+function sendUnauthorized(string $message): void {
     http_response_code(401);
     header('Content-Type: application/json');
     echo json_encode(['success' => false, 'message' => $message]);
     exit;
 }
 
-/**
- * Get current authenticated user data.
- */
-function getCurrentUser() {
-    return $_SERVER['user_data'] ?? null;
-}
+function getCurrentUser(): ?array { return $_SERVER['user_data'] ?? null; }
 
-/**
- * Check if current user has one of the allowed roles.
- * If not, sends 403 and exits.
- */
-function requireRole($allowedRoles) {
+function requireRole(array $roles): void {
     $user = getCurrentUser();
-    if (!$user) {
-        sendUnauthorized('Not authenticated');
-    }
-    if (!in_array($user['role'], (array)$allowedRoles)) {
+    if (!$user || !in_array($user['role'], $roles, true)) {
         http_response_code(403);
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Forbidden: insufficient privileges']);
+        echo json_encode(['success' => false, 'message' => 'You do not have permission to perform this action.']);
         exit;
     }
 }

@@ -195,6 +195,20 @@
       color: var(--clinic-muted);
     }
 
+    .upload-filters {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .upload-filters .search-field { flex: 1 1 280px; }
+    .upload-filters .type-field { flex: 0 1 280px; }
+    .upload-filters .form-label { color: var(--clinic-text); font-weight: 700; }
+    .upload-filters .form-control:focus,
+    .upload-filters .form-select:focus { border-color: var(--clinic-secondary); box-shadow: 0 0 0 .2rem rgba(20,184,166,.15); }
+
     .status-dot {
       display: inline-block;
       width: 10px;
@@ -453,12 +467,28 @@
       Loading uploads, please wait...
     </div>
 
+    <div class="upload-filters">
+      <div class="search-field">
+        <label for="uploadSearch" class="form-label">Search uploads</label>
+        <input id="uploadSearch" v-model.trim="searchQuery" type="search" class="form-control" placeholder="File name, ID, uploader, status, or SF8 type">
+      </div>
+      <div class="type-field">
+        <label for="reportTypeFilter" class="form-label">SF8 file type</label>
+        <select id="reportTypeFilter" v-model="selectedReportCode" class="form-select">
+          <option value="">All SF8 types</option>
+          <option v-for="option in reportTypeOptions" :key="option.code" :value="option.code">{{ option.label }}</option>
+        </select>
+      </div>
+      <span class="small-note pb-2" role="status">{{ filteredUploads.length }} of {{ uploads.length }} files</span>
+    </div>
+
     <div class="table-responsive">
       <table class="table table-bordered align-middle">
         <thead>
           <tr>
             <th>ID</th>
             <th>File Name</th>
+            <th>SF8 Type</th>
             <th>Uploaded By</th>
             <th>Upload Date</th>
             <th>Status</th>
@@ -470,17 +500,18 @@
         </thead>
 
         <tbody>
-          <tr v-if="uploads.length === 0 && !loading">
-            <td colspan="9">
+          <tr v-if="filteredUploads.length === 0 && !loading">
+            <td colspan="10">
               <div class="empty-row">
-                No SF8 uploads found.
+                {{ uploads.length ? 'No SF8 uploads match your search or file type.' : 'No SF8 uploads found.' }}
               </div>
             </td>
           </tr>
 
-          <tr v-for="upload in uploads" :key="upload.upload_id">
+          <tr v-for="upload in filteredUploads" :key="upload.upload_id">
             <td>{{ upload.upload_id }}</td>
             <td class="fw-semibold">{{ upload.file_name }}</td>
+            <td>{{ reportTypeLabel(upload.report_code) }}</td>
             <td>{{ upload.uploaded_by_email }}</td>
             <td>{{ upload.upload_date }}</td>
 
@@ -501,7 +532,7 @@
 
             <td>
               <span class="badge" :class="upload.cloudinary_url ? 'bg-success' : 'bg-secondary'">
-                {{ upload.cloudinary_url ? "Exists" : "No URL" }}
+                {{ upload.file_type === "sf8_enc_v1" ? "Encrypted" : (upload.cloudinary_url ? "Legacy file" : "No URL") }}
               </span>
             </td>
 
@@ -519,8 +550,8 @@
                   </li>
 
                   <li>
-                    <a :href="upload.cloudinary_url" target="_blank" class="dropdown-item">
-                      Open in Cloudinary
+                    <a :href="upload.cloudinary_url" target="_blank" rel="noopener noreferrer" class="dropdown-item">
+                      {{ upload.file_type === "sf8_enc_v1" ? "Download Encrypted File" : "Open in Cloudinary" }}
                     </a>
                   </li>
 
@@ -599,6 +630,16 @@ createApp({
   data() {
     return {
       uploads: [],
+      searchQuery: "",
+      selectedReportCode: "",
+      reportTypeLabels: {
+        students_information: "Student Information",
+        okd_lhas: "OKD and LHAS",
+        immunization_nutritional_status: "Immunization & Nutritional Status",
+        deworming_wifa: "Deworming & WIFA",
+        adolescent_reproductive_health_arh: "Adolescent Reproductive Health / ARH",
+        comprehensive_tobacco_control: "Comprehensive Tobacco Control"
+      },
       loading: false,
       message: "",
       messageType: "success",
@@ -612,6 +653,24 @@ createApp({
   },
 
   computed: {
+    reportTypeOptions() {
+      const codes = [...new Set(this.uploads.map(upload => upload.report_code || ""))];
+      return codes.map(code => ({ code: code || "__unspecified__", label: this.reportTypeLabel(code) }))
+        .sort((a, b) => a.label.localeCompare(b.label));
+    },
+
+    filteredUploads() {
+      const query = this.searchQuery.trim().toLocaleLowerCase();
+      return this.uploads.filter(upload => {
+        const code = upload.report_code || "";
+        if (this.selectedReportCode !== "" && (code || "__unspecified__") !== this.selectedReportCode) return false;
+        if (!query) return true;
+        return [upload.upload_id, upload.file_name, upload.uploaded_by_email,
+          upload.status, upload.upload_date, this.reportTypeLabel(code), code]
+          .some(value => String(value ?? "").toLocaleLowerCase().includes(query));
+      });
+    },
+
     pendingCount() {
       return this.uploads.filter(upload => upload.status === "Pending").length;
     },
@@ -640,6 +699,10 @@ createApp({
   },
 
   methods: {
+    reportTypeLabel(code) {
+      return this.reportTypeLabels[code] || (code ? code.replace(/_/g, " ") : "Unspecified SF8 type");
+    },
+
     showMessage(type, text) {
       this.messageType = type;
       this.message = text;
@@ -767,5 +830,6 @@ createApp({
   }
 }).mount("#app");
 </script>
+<script src="assets/table-pagination.js" defer></script>
 </body>
 </html>

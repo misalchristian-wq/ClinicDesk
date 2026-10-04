@@ -1,7 +1,9 @@
 <?php
 // api/get_category_records.php
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse']);
 include "../db.php";
 include "record_categories.php";
 
@@ -51,7 +53,7 @@ $records = [];
 while ($row = $res->fetch_assoc()) {
     // Ensure numeric values are cast to numbers
     foreach ($row as $key => $val) {
-        if (is_numeric($val) && !is_null($val)) {
+        if ($key !== 'lrn' && is_numeric($val) && !is_null($val)) {
             $row[$key] = (float) $val;
         }
     }

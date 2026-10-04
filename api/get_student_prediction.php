@@ -1,6 +1,8 @@
 <?php
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse']);
 
 ini_set("display_errors", 0);
 error_reporting(E_ALL);

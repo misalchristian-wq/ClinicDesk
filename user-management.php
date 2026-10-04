@@ -680,7 +680,7 @@ createApp({
     checkSession() {
       const role = localStorage.getItem("active_role");
       const name = localStorage.getItem("local_full_name");
-      if (role !== "IT Admin") {
+      if (role !== "IT Admin" || !localStorage.getItem("local_id_token")) {
         window.location.href = "login.php";
         return;
       }
@@ -821,7 +821,10 @@ createApp({
         
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(this.form.storage === 'local' ? { "Authorization": "Bearer " + localStorage.getItem("local_id_token") } : {})
+          },
           body: JSON.stringify(payload)
         });
         const result = await response.json();
@@ -894,5 +897,6 @@ createApp({
   }
 }).mount("#app");
 </script>
+<script src="assets/table-pagination.js" defer></script>
 </body>
 </html>

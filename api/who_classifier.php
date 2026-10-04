@@ -2,13 +2,14 @@
 // api/who_classifier.php
 //
 // Computes BMI, BMI-for-age category, and Height-for-Age category using the
-// DepEd/WHO reference thresholds extracted from the official SF8 helper table
-// (who_reference.json). Ages are matched by age-in-months (5-19 yrs = 60-228 mo).
+// WHO age- and sex-specific references. BMI uses who_reference.json; height-for-age
+// uses WHO child standards at 24-60 months and the 5-19-year reference at
+// 61-228 months, separately for boys and girls, in who_hfa_reference.json.
 //
 // Provides:
 //   whoComputeBMI($weightKg, $heightM)             -> float|null
 //   whoBmiCategory($bmi, $ageMonths, $sex)         -> string
-//   whoHeightForAge($heightM, $ageMonths)          -> string
+//   whoHeightForAge($heightM, $ageMonths, $sex)    -> string
 //   whoAgeToMonths($ageYears)                       -> int
 //
 // Categories match the values stored by the CSV path:
@@ -63,20 +64,30 @@ function whoBmiCategory($bmi, $ageMonths, $sex) {
     return "Obese";
 }
 
-// Row format: [ss_max, normal_min, normal_max, tall_min] (heights in meters)
-function whoHeightForAge($heightM, $ageMonths) {
-    $ref = whoLoadReference();
-    $table = $ref["hfa"] ?? [];
-    $m = (string)whoClampMonths($ageMonths);
-    if (!isset($table[$m])) return "";
-    $h = (float)$heightM;
-    if ($h <= 0) return "";
-
-    list($ssMax, $normalMin, $normalMax, $tallMin) = $table[$m];
-
-    if ($ssMax !== null && $h <= $ssMax) return "Severely Stunted";
-    if ($normalMin !== null && $h < $normalMin) return "Stunted";
-    if ($normalMax !== null && $h <= $normalMax) return "Normal";
-    return "Tall";
+// Height cutoffs are the WHO -3, -2 and +2 SD values in centimetres, by completed
+// month and sex. Missing or out-of-range inputs remain unclassified; never clamp
+// an older/younger learner to the nearest reference month.
+function whoHeightForAge($heightM, $ageMonths, $sex) {
+    static $reference = null;
+    if ($reference === null) {
+        $path = __DIR__ . '/who_hfa_reference.json';
+        $reference = is_file($path) ? json_decode(file_get_contents($path), true) : [];
+    }
+    $sex = strtolower(trim((string)$sex));
+    if ($sex === 'male' || $sex === 'm') $sexKey = 'boys';
+    elseif ($sex === 'female' || $sex === 'f') $sexKey = 'girls';
+    else return '';
+    if (!is_numeric($ageMonths) || !is_numeric($heightM)) return '';
+    $month = (int)floor((float)$ageMonths + 1e-8);
+    if ($month < 24 || $month > 228) return '';
+    $table = $reference[$month <= 60 ? 'child_' . $sexKey : $sexKey] ?? [];
+    if (!isset($table[$month])) return '';
+    $heightCm = round((float)$heightM * 100, 1);
+    if ($heightCm <= 0) return '';
+    [$minus3, $minus2, $plus2] = $table[$month];
+    if ($heightCm < $minus3) return 'Severely Stunted';
+    if ($heightCm < $minus2) return 'Stunted';
+    if ($heightCm <= $plus2) return 'Normal';
+    return 'Tall';
 }
 ?>

@@ -1,19 +1,24 @@
 <?php
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type");
-header("Access-Control-Allow-Methods: POST");
 
 ini_set("display_errors", 0);
 error_reporting(E_ALL);
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse']);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Use POST to generate a prediction.']);
+    exit;
+}
 
 try {
     include __DIR__ . "/../db.php";
 
     $data = json_decode(file_get_contents("php://input"), true);
-    $record_id = $data["record_id"] ?? "";
+    $record_id = filter_var($data["record_id"] ?? null, FILTER_VALIDATE_INT);
 
-    if ($record_id === "") {
+    if (!$record_id || $record_id < 1) {
         echo json_encode(["success" => false, "message" => "Record ID is required."]);
         exit;
     }
@@ -36,50 +41,54 @@ try {
     $inputStmt->execute();
     $input = $inputStmt->get_result()->fetch_assoc();
     $inputStmt->close();
-    if (!$input) $input = [];
+    if (!$input) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Save the health assessment before running a prediction.']);
+        exit;
+    }
+
+    $missing = [];
+    if (!is_numeric($student['age'] ?? null) || (int)$student['age'] < 5 || (int)$student['age'] > 69) $missing[] = 'age (5–69 in this dataset)';
+    if (!in_array($student['sex'] ?? '', ['Male', 'Female'], true)) $missing[] = 'sex';
+    foreach (['diet_type' => 'diet type', 'living_environment' => 'living environment',
+              'skin_condition' => 'skin condition', 'sun_exposure' => 'sun exposure'] as $key => $label) {
+        if (empty($input[$key])) $missing[] = $label;
+    }
+    $flagMap = [
+        'Night Blindness' => 'has_night_blindness', 'Dry Eyes' => 'has_dry_eyes',
+        'Bleeding Gums' => 'has_bleeding_gums', 'Fatigue' => 'has_fatigue',
+        'Tingling Sensation' => 'has_numbness_tingling',
+        'Reduced Memory Capacity' => 'has_memory_problems',
+        'Shortness of Breath' => 'has_shortness_of_breath',
+        'Loss of Appetite' => 'has_low_appetite',
+        'Fast Heart Rate' => 'has_fast_heart_rate',
+        'Brittle Nails' => 'has_brittle_nails', 'Weight Loss' => 'has_weight_loss',
+        'Reduced Wound Healing Capacity' => 'has_reduced_wound_healing',
+    ];
+    foreach ($flagMap as $key) {
+        if (!in_array($input[$key] ?? null, ['Yes', 'No'], true)) $missing[] = str_replace('_', ' ', $key);
+    }
+    if (!in_array($input['diet_type'] ?? '', ['Vegetarian', 'Non-Vegetarian'], true)) $missing[] = 'dataset diet type';
+    if (!in_array($input['living_environment'] ?? '', ['Rural', 'Urban'], true)) $missing[] = 'living environment selection';
+    if (!in_array($input['skin_condition'] ?? '', ['Normal', 'Dry Skin', 'Rough Skin', 'Pale/Yellow Skin'], true)) $missing[] = 'skin condition selection';
+    if (!in_array($input['sun_exposure'] ?? '', ['Low', 'Moderate', 'High'], true)) $missing[] = 'sun exposure selection';
+    if ($missing) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Complete the dataset screening inputs: ' . implode(', ', array_unique($missing)) . '.']);
+        exit;
+    }
 
     // Build payload for Flask API
     $payload = [
-        "age" => is_numeric($student["age"]) ? (int)$student["age"] : 0,
-        "gender" => $student["sex"] ?? "Unknown",
-        "bmi" => is_numeric($student["bmi"]) ? (float)$student["bmi"] : 0,
-        "smoking_status" => "No",
-        "alcohol_consumption" => "No",
-        "exercise_level" => $input["exercise_level"] ?? "Moderate",
-        "diet_type" => $input["diet_type"] ?? "Balanced",
-        "sun_exposure" => $input["sun_exposure"] ?? "Moderate",
-        "income_level" => "Middle",
-        "latitude_region" => "Tropical",
-        "vitamin_a_percent_rda" => 70,
-        "vitamin_c_percent_rda" => 70,
-        "vitamin_d_percent_rda" => 70,
-        "vitamin_e_percent_rda" => 70,
-        "vitamin_b12_percent_rda" => 70,
-        "folate_percent_rda" => 70,
-        "calcium_percent_rda" => 70,
-        "iron_percent_rda" => 70,
-        "hemoglobin_g_dl" => 12.5,
-        "serum_vitamin_d_ng_ml" => 25,
-        "serum_vitamin_b12_pg_ml" => 350,
-        "serum_folate_ng_ml" => 8,
-        "has_night_blindness" => (($input["has_night_blindness"] ?? "No") === "Yes") ? 1 : 0,
-        "has_fatigue" => (($input["has_fatigue"] ?? "No") === "Yes") ? 1 : 0,
-        "has_bleeding_gums" => (($input["has_bleeding_gums"] ?? "No") === "Yes") ? 1 : 0,
-        "has_bone_pain" => (($input["has_bone_pain"] ?? "No") === "Yes") ? 1 : 0,
-        "has_muscle_weakness" => 0,
-        "has_numbness_tingling" => 0,
-        "has_memory_problems" => 0,
-        "has_pale_skin" => (($input["has_pale_skin"] ?? "No") === "Yes") ? 1 : 0,
-        "has_multiple_deficiencies" => 0
+        'Age' => (int)$student['age'], 'Gender' => $student['sex'],
+        'Diet Type' => $input['diet_type'],
+        'Living Environment' => $input['living_environment'],
+        'Skin Condition' => $input['skin_condition'],
+        'Low Sun Exposure' => $input['sun_exposure'] === 'Low' ? 1 : 0,
     ];
-
-    // Count symptoms
-    $symptomFields = ["has_night_blindness", "has_fatigue", "has_bleeding_gums", "has_bone_pain", "has_pale_skin"];
-    $symptomCount = 0;
-    foreach ($symptomFields as $field) {
-        if (($payload[$field] ?? 0) == 1) $symptomCount++;
+    foreach ($flagMap as $feature => $field) {
+        $payload[$feature] = $input[$field] === 'Yes' ? 1 : 0;
     }
-    $payload["symptoms_count"] = $symptomCount;
 
     // Call Flask API
     $ch = curl_init("http://127.0.0.1:5001/predict");
@@ -88,30 +97,29 @@ try {
     curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
     curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_PROXY, '');
 
     $mlResponse = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlError = curl_error($ch);
     curl_close($ch);
 
-    // Logging (safe version)
-    $logFile = __DIR__ . "/../ml_curl_log.txt";
-    $logDir = dirname($logFile);
-    if (!is_dir($logDir)) mkdir($logDir, 0777, true);
-    $log = @fopen($logFile, "a");
-    if ($log) {
-        fwrite($log, date("Y-m-d H:i:s") . " - HTTP: $httpCode, Error: $curlError, Response: $mlResponse\n");
-        fclose($log);
-    }
-
-    if ($mlResponse === false || $httpCode < 200 || $httpCode >= 300) {
+    if ($mlResponse === false || $httpCode === 0 || $httpCode >= 500) {
+        http_response_code(503);
         echo json_encode([
             "success" => false,
-            "message" => "ML API request failed.",
-            "http_code" => $httpCode,
-            "curl_error" => $curlError,
-            "ml_response" => $mlResponse
+            "message" => "Prediction service is unavailable. Open Prediction Settings and check its status."
+        ]);
+        exit;
+    }
+
+    if ($httpCode >= 400) {
+        $modelError = json_decode($mlResponse, true);
+        http_response_code(422);
+        echo json_encode([
+            'success' => false,
+            'message' => is_array($modelError) && !empty($modelError['message'])
+                ? $modelError['message'] : 'Review the dataset screening inputs and try again.'
         ]);
         exit;
     }
@@ -119,10 +127,10 @@ try {
     // Decode JSON response from Flask
     $mlResult = json_decode($mlResponse, true);
     if (!$mlResult || !isset($mlResult["success"]) || $mlResult["success"] !== true) {
+        http_response_code(502);
         echo json_encode([
             "success" => false,
-            "message" => "ML API returned an error: " . ($mlResult["message"] ?? "Unknown"),
-            "raw_response" => $mlResponse
+            "message" => $mlResult['message'] ?? "The model could not process this assessment. Review the recorded screening inputs and try again."
         ]);
         exit;
     }
@@ -130,6 +138,12 @@ try {
     // Extract values
     $predictedDeficiency = $mlResult["predicted_deficiency"] ?? "For further assessment";
     $riskLevel = $mlResult["predicted_risk_level"] ?? "Model-Based";
+    $bmiCategory = strtolower(trim((string)($student['bmi_category'] ?? '')));
+    if (str_contains($bmiCategory, 'severely wasted') || str_contains($bmiCategory, 'obese')) {
+        $riskLevel = 'High';
+    } elseif ((str_contains($bmiCategory, 'wasted') || str_contains($bmiCategory, 'overweight')) && $riskLevel === 'Low') {
+        $riskLevel = 'Moderate';
+    }
     $confidenceScore = $mlResult["confidence_score"] ?? 0;
     $algorithmUsed = $mlResult["algorithm_used"] ?? "Decision Tree";
     $recommendationText = $mlResult["recommendation_text"] ?? "";
@@ -171,21 +185,20 @@ try {
             "recommendation_text" => $recommendationText,
             "recommended_foods" => $recommendedFoods,
             "intervention_type" => $interventionType
-        ],
-        "sent_payload" => $payload
+        ]
     ]);
 
     $conn->close();
 
 } catch (Throwable $e) {
+    error_log('ClinicDesk prediction error: ' . $e->getMessage());
+    http_response_code(500);
     if (isset($conn) && $conn) {
         try { $conn->rollback(); } catch (Throwable $rollbackError) {}
     }
     echo json_encode([
         "success" => false,
-        "message" => "Server error: " . $e->getMessage(),
-        "file" => $e->getFile(),
-        "line" => $e->getLine()
+        "message" => "Prediction could not be saved. Please try again."
     ]);
 }
 ?>

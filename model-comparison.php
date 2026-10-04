@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>ClinicDesk | Model Comparison & Prediction Tester</title>
+    <title>ClinicDesk | Model Performance & Prediction Tester</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -84,8 +84,8 @@
 <div id="app" class="wrapper">
     <div class="header-box d-flex justify-content-between align-items-center flex-wrap gap-3">
         <div>
-            <h1 class="fw-bold mb-2">📊 Model Comparison & Prediction Tester</h1>
-            <p class="mb-0">Objective 2: Compare ML algorithms and determine the best for nutritional risk classification</p>
+            <h1 class="fw-bold mb-2">📊 Model Performance & Prediction Tester</h1>
+            <p class="mb-0">Review the current symptom model and test its 18 input fields.</p>
         </div>
         <a href="nurse-dashboard.php" class="btn btn-light">← Back to Dashboard</a>
     </div>
@@ -95,7 +95,7 @@
 
     <!-- Comparison Table -->
     <div class="card p-4" v-if="metrics.length">
-        <h3 class="fw-bold mb-3">📈 Algorithm Performance Comparison</h3>
+        <h3 class="fw-bold mb-3">📈 Source Dataset Holdout Performance</h3>
         <div class="table-responsive">
             <table class="table table-bordered align-middle">
                 <thead>
@@ -105,7 +105,7 @@
                         <th>Precision</th>
                         <th>Recall</th>
                         <th>F1-Score</th>
-                        <th>Best Model</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -116,7 +116,7 @@
                         <td>{{ (m.recall * 100).toFixed(2) }}%</td>
                         <td>{{ (m.f1_score * 100).toFixed(2) }}%</td>
                         <td>
-                            <span v-if="m.f1_score === bestF1" class="best-model-badge">✓ Best</span>
+                            <span v-if="m.f1_score === bestF1" class="best-model-badge">Current</span>
                         </td>
                     </tr>
                 </tbody>
@@ -129,9 +129,9 @@
                 </div>
             </div>
             <div class="col-md-6">
-                <div class="alert alert-success">
-                    <strong>🏆 Best Model:</strong> {{ bestModelName }} (F1-Score: {{ (bestF1 * 100).toFixed(2) }}%)<br>
-                    This model is deployed for real‑time predictions.
+                <div class="alert alert-warning">
+                    <strong>Current model:</strong> {{ bestModelName }} (macro F1: {{ (bestF1 * 100).toFixed(2) }}%)<br>
+                    This score comes from the source CSV holdout, not ClinicDesk learners. Only 37 school-age rows were in the holdout; their accuracy was 21.62%. Use results only as prompts for nurse review.
                 </div>
             </div>
         </div>
@@ -139,7 +139,8 @@
 
     <!-- Prediction Tester -->
     <div class="card p-4" v-if="metrics.length">
-        <h3 class="fw-bold mb-3">🔮 Test Prediction (Using Best Model)</h3>
+        <h3 class="fw-bold mb-3">🔮 Test Current Model</h3>
+        <p class="text-muted">Enter the 18 predictor columns from the symptom CSV. Predicted Deficiency is the model's output and is not an input. This demonstration does not save a student prediction.</p>
         <div class="row g-3">
             <div class="col-md-3">
                 <label class="form-label">Age</label>
@@ -148,13 +149,9 @@
             <div class="col-md-3">
                 <label class="form-label">Gender</label>
                 <select class="form-select" v-model="testData.gender">
-                <option :value="0">Male</option>
-                <option :value="1">Female</option>
+                <option value="">Select</option><option value="Male">Male</option>
+                <option value="Female">Female</option>
             </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">BMI</label>
-                <input type="number" step="0.1" class="form-control" v-model.number="testData.bmi">
             </div>
             <div class="col-md-3">
                 <label class="form-label">Fatigue?</label>
@@ -177,36 +174,27 @@
                     <option value="1">Yes</option>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Bone Pain?</label>
-                <select class="form-select" v-model="testData.has_bone_pain">
-                    <option value="0">No</option>
-                    <option value="1">Yes</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Pale Skin?</label>
-                <select class="form-select" v-model="testData.has_pale_skin">
-                    <option value="0">No</option>
-                    <option value="1">Yes</option>
-                </select>
-            </div>
+            <div class="col-md-3"><label class="form-label">Diet type</label><select class="form-select" v-model="testData['Diet Type']"><option value="">Select</option><option>Vegetarian</option><option>Non-Vegetarian</option></select></div>
+            <div class="col-md-3"><label class="form-label">Living environment</label><select class="form-select" v-model="testData['Living Environment']"><option value="">Select</option><option>Rural</option><option>Urban</option></select></div>
+            <div class="col-md-3"><label class="form-label">Skin condition</label><select class="form-select" v-model="testData['Skin Condition']"><option value="">Select</option><option>Normal</option><option>Dry Skin</option><option>Rough Skin</option><option>Pale/Yellow Skin</option></select></div>
+            <div class="col-md-3" v-for="item in additionalFlags" :key="item.key"><label class="form-label">{{ item.label }}</label><select class="form-select" v-model.number="testData[item.key]"><option :value="0">No</option><option :value="1">Yes</option></select></div>
         </div>
         <div class="mt-4 d-flex justify-content-end">
-            <button class="btn btn-green" @click="runPrediction" :disabled="predicting">
+            <button class="btn btn-green" @click="runPrediction" :disabled="predicting || missingTestInputs.length">
                 {{ predicting ? 'Predicting...' : 'Get Prediction' }}
             </button>
         </div>
+        <p v-if="missingTestInputs.length" class="small text-muted mt-2">Complete: {{ missingTestInputs.join(', ') }}.</p>
 
         <div v-if="predictionResult" class="prediction-result mt-4">
             <h5 class="fw-bold">Prediction Result</h5>
-            <p><strong>Predicted Deficiency:</strong> {{ predictionResult.predicted_deficiency }}</p>
-            <p><strong>Risk Level:</strong> 
+            <p><strong>Screening flag:</strong> {{ screeningFlag(predictionResult.predicted_deficiency) }}</p>
+            <p><strong>Screening Priority:</strong>
                 <span :class="{'text-danger': predictionResult.predicted_risk_level === 'High', 'text-warning': predictionResult.predicted_risk_level === 'Moderate', 'text-success': predictionResult.predicted_risk_level === 'Low'}">
                     {{ predictionResult.predicted_risk_level }}
                 </span>
             </p>
-            <p><strong>Confidence:</strong> {{ (predictionResult.confidence_score * 100).toFixed(2) }}%</p>
+            <p><strong>Model score:</strong> {{ (predictionResult.confidence_score * 100).toFixed(2) }}%</p>
             <p><strong>Recommendation:</strong> {{ predictionResult.recommendation_text }}</p>
             <p><strong>Recommended Foods:</strong> {{ predictionResult.recommended_foods }}</p>
         </div>
@@ -230,23 +218,44 @@ createApp({
             predicting: false,
             predictionResult: null,
             predictionError: null,
+            additionalFlags: [
+                {key:'Dry Eyes',label:'Dry eyes?'},
+                {key:'Tingling Sensation',label:'Tingling sensation?'},
+                {key:'Low Sun Exposure',label:'Low sun exposure?'},
+                {key:'Reduced Memory Capacity',label:'Reduced memory capacity?'},
+                {key:'Shortness of Breath',label:'Shortness of breath?'},
+                {key:'Loss of Appetite',label:'Loss of appetite?'},
+                {key:'Fast Heart Rate',label:'Fast heart rate?'},
+                {key:'Brittle Nails',label:'Brittle nails?'},
+                {key:'Weight Loss',label:'Weight loss?'},
+                {key:'Reduced Wound Healing Capacity',label:'Reduced wound healing capacity?'}
+            ],
             testData: {
-                age: 15,
-                gender: 1,   // 1 = Female, 0 = Male (based on typical encoder)
-                bmi: 18.5,
+                age: '',
+                gender: '',
+                'Diet Type':'', 'Living Environment':'', 'Skin Condition':'',
                 has_fatigue: 0,
                 has_night_blindness: 0,
                 has_bleeding_gums: 0,
-                has_bone_pain: 0,
-                has_pale_skin: 0
+                'Dry Eyes':0, 'Tingling Sensation':0, 'Low Sun Exposure':0,
+                'Reduced Memory Capacity':0, 'Shortness of Breath':0,
+                'Loss of Appetite':0, 'Fast Heart Rate':0, 'Brittle Nails':0,
+                'Weight Loss':0, 'Reduced Wound Healing Capacity':0
             }
         };
+    },
+    computed: {
+        missingTestInputs() {
+            const fields = ['age','gender','Diet Type','Living Environment','Skin Condition'];
+            return fields.filter(key => !this.testData[key]);
+        }
     },
     async mounted() {
         await this.loadMetrics();
         this.renderChart();
     },
     methods: {
+        screeningFlag(value) { return ({'Iron':'Possible iron-related concern','Vitamin A':'Possible vitamin A-related concern','Vitamin B12':'Possible vitamin B12-related concern','Vitamin C':'Possible vitamin C-related concern','Vitamin D':'Possible vitamin D-related concern','Zinc':'Possible zinc-related concern','No Deficiency':'No concern flagged by this model'})[value] || 'For nurse review'; },
         async loadMetrics() {
             try {
                 // Find the latest model version folder. Here we assume the metrics JSON is inside ml_model/version_*/model_comparison.json
@@ -291,25 +300,24 @@ createApp({
             });
         },
         async runPrediction() {
+            if (this.missingTestInputs.length) return;
             this.predicting = true;
             this.predictionResult = null;
             this.predictionError = null;
             try {
-                // Build payload similar to generate_student_prediction.php but simpler
-                const payload = {
-                    age: this.testData.age,
-                    gender: this.testData.gender,
-                    bmi: this.testData.bmi,
-                    has_fatigue: this.testData.has_fatigue,
-                    has_night_blindness: this.testData.has_night_blindness,
-                    has_bleeding_gums: this.testData.has_bleeding_gums,
-                    has_bone_pain: this.testData.has_bone_pain,
-                    has_pale_skin: this.testData.has_pale_skin
-                };
-                const response = await fetch('http://127.0.0.1:5001/predict', {
+                const response = await fetch('api/test_model_prediction.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('local_id_token') || ''}` },
+                    body: JSON.stringify({
+                        Age: Number(this.testData.age), Gender: this.testData.gender,
+                        'Diet Type': this.testData['Diet Type'],
+                        'Living Environment': this.testData['Living Environment'],
+                        'Skin Condition': this.testData['Skin Condition'],
+                        'Night Blindness': Number(this.testData.has_night_blindness),
+                        'Bleeding Gums': Number(this.testData.has_bleeding_gums),
+                        Fatigue: Number(this.testData.has_fatigue),
+                        ...Object.fromEntries(this.additionalFlags.map(item => [item.key, this.testData[item.key]]))
+                    })
                 });
                 const result = await response.json();
                 if (result.success) {
@@ -325,5 +333,6 @@ createApp({
     }
 }).mount('#app');
 </script>
+<script src="assets/table-pagination.js" defer></script>
 </body>
 </html>

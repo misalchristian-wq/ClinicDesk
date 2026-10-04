@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ClinicDesk table pagination check</title></head>
+<body>
+  <div class="table-responsive"><table><tbody id="rows"></tbody></table></div>
+  <script>
+    const body = document.getElementById('rows');
+    for (let number = 1; number <= 25; number++) {
+      const row = body.insertRow();
+      row.insertCell().textContent = `Record ${number}`;
+    }
+    window.addEventListener('DOMContentLoaded', () => setTimeout(() => {
+      const visible = () => [...body.rows].filter(row => !row.classList.contains('clinic-page-hidden')).map(row => row.textContent);
+      const pager = document.querySelector('.clinic-table-pager');
+      const first = visible().length === 10 && visible()[0] === 'Record 1';
+      const select = pager.querySelector('select');
+      select.value = '15';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      const resized = visible().length === 15 && visible().at(-1) === 'Record 15';
+      pager.querySelectorAll('button')[1].click();
+      const second = visible().length === 10 && visible()[0] === 'Record 16';
+      body.insertRow().insertCell().textContent = 'Record 26';
+      setTimeout(() => {
+        const updated = visible().length === 15 && visible()[0] === 'Record 1';
+        document.body.dataset.testResult = first && resized && second && updated ? 'PASS' : 'FAIL';
+      }, 30);
+    }, 30));
+  </script>
+  <script src="../assets/table-pagination.js" defer></script>
+</body>
+</html>

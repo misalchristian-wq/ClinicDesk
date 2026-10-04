@@ -868,6 +868,7 @@ createApp({
         localStorage.setItem("local_email", result.user.email);
         localStorage.setItem("local_role", result.user.role);
         localStorage.setItem("local_login_time", new Date().toISOString());
+        localStorage.setItem("local_id_token", result.token);
 
         this.showMessage("success", "Login successful. Redirecting...");
 
@@ -902,6 +903,7 @@ createApp({
       localStorage.removeItem("local_email");
       localStorage.removeItem("local_role");
       localStorage.removeItem("local_login_time");
+      localStorage.removeItem("local_id_token");
     }
   }
 }).mount("#app");

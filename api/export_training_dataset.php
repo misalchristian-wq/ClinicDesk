@@ -1,8 +1,12 @@
 <?php
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse', 'School Admin']);
 header("Content-Type: text/csv");
 header("Content-Disposition: attachment; filename=\"clinicdesk_training_data_" . date("Ymd") . ".csv\"");
 
 include __DIR__ . "/../db.php";
+require_once __DIR__ . '/who_classifier.php';
 
 // Open output stream
 $output = fopen("php://output", "w");
@@ -26,7 +30,7 @@ $sql = "
         s.grade_level,
         s.bmi,
         s.bmi_category,
-        s.height_for_age,
+        s.height_m,
         h.diet_type,
         h.sun_exposure,
         h.exercise_level,
@@ -49,11 +53,11 @@ $sql = "
         CASE WHEN t.violation_type IS NOT NULL THEN 1 ELSE 0 END AS tobacco_violation
     FROM sf8_student_records s
     LEFT JOIN student_health_inputs h ON s.record_id = h.record_id
-    LEFT JOIN okd_lhas_records o ON s.record_id = o.student_record_id
-    LEFT JOIN immunization_records i ON s.record_id = i.student_record_id
-    LEFT JOIN deworming_wifa_records d ON s.record_id = d.student_record_id
-    LEFT JOIN arh_records a ON s.record_id = a.student_record_id
-    LEFT JOIN tobacco_control_records t ON s.record_id = t.student_record_id
+    LEFT JOIN okd_lhas_records o ON s.record_id = o.student_record_id AND o.upload_id IS NOT NULL
+    LEFT JOIN immunization_records i ON s.record_id = i.student_record_id AND i.upload_id IS NOT NULL
+    LEFT JOIN deworming_wifa_records d ON s.record_id = d.student_record_id AND d.upload_id IS NOT NULL
+    LEFT JOIN arh_records a ON s.record_id = a.student_record_id AND a.upload_id IS NOT NULL
+    LEFT JOIN tobacco_control_records t ON s.record_id = t.student_record_id AND t.upload_id IS NOT NULL
     GROUP BY s.record_id
 ";
 
@@ -63,6 +67,8 @@ if (!$result) {
 }
 
 while ($row = $result->fetch_assoc()) {
+    $heightForAge = is_numeric($row['age']) && is_numeric($row['height_m'])
+        ? whoHeightForAge($row['height_m'], (float)$row['age'] * 12, $row['sex']) : '';
     // Map sex to numeric (0 = Male, 1 = Female)
     $sex_num = ($row['sex'] == 'Female') ? 1 : 0;
     
@@ -82,7 +88,7 @@ while ($row = $result->fetch_assoc()) {
         $row['grade_level'],
         $row['bmi'],
         $target,   // target column (numeric)
-        $row['height_for_age'],
+        $heightForAge,
         $row['diet_type'],
         $row['sun_exposure'],
         $row['exercise_level'],

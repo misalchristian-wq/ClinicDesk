@@ -324,18 +324,18 @@
     <div class="col-md-6 col-lg-4">
       <div class="dashboard-card">
         <div class="card-icon">👥</div>
-        <h4>Student Dashboard</h4>
-        <p>View approved student nutritional records, health assessment inputs, prediction results, and recommendations.</p>
-        <a href="student-dashboard.php" class="btn-clinic-card mt-auto">View Student Dashboard</a>
+        <h4>Student Health &amp; Nutrition Monitoring</h4>
+        <p>Use program tabs for nutrition, feeding progress, WIFA, deworming, ARH, immunization, screening, and tobacco records.</p>
+        <a href="monitoring-hub.php" class="btn-clinic-card mt-auto">Open Monitoring</a>
       </div>
     </div>
 
     <div class="col-md-6 col-lg-4">
       <div class="dashboard-card">
-        <div class="card-icon">🍏</div>
-        <h4>Nutritional Monitoring</h4>
-        <p>Monitor all students by BMI category, feeding program list, and health assessment status.</p>
-        <a href="nutritional-monitoring.php" class="btn-clinic-card mt-auto">Open Monitoring</a>
+        <div class="card-icon">📚</div>
+        <h4>Student Directory</h4>
+        <p>Find students by school year, grade, section, name, or LRN. View profiles, edit records, and update learner groups.</p>
+        <a href="student-directory.php" class="btn-clinic-card mt-auto">Open Student Directory</a>
       </div>
     </div>
 
@@ -357,14 +357,14 @@
       </div>
     </div>
 
-    <div class="col-md-6 col-lg-4">
+    <!-- <div class="col-md-6 col-lg-4">
       <div class="dashboard-card">
         <div class="card-icon">⚖️</div>
         <h4>Model Comparison</h4>
         <p>View performance comparison of ML algorithms and test predictions to ensure accuracy.</p>
         <a href="model-comparison.php" class="btn-clinic-card mt-auto">Open Comparison</a>
       </div>
-    </div>
+    </div> -->
 
     <div class="col-md-6 col-lg-4">
       <div class="dashboard-card">
@@ -377,12 +377,14 @@
 
     <div class="col-md-6 col-lg-4">
       <div class="dashboard-card">
-        <div class="card-icon">📈</div>
-        <h4>Health Analytics</h4>
-        <p>Consolidated risk, BMI, and height-for-age summary with section breakdown and PDF export.</p>
-        <a href="health-analytics.php" class="btn-clinic-card mt-auto">View Analytics</a>
+        <div class="card-icon">🤖</div>
+        <h4>Prediction Settings</h4>
+        <p>Check the model status and activate health predictions using your Clinic Nurse password.</p>
+        <a href="nurse-prediction-settings.php" class="btn-clinic-card mt-auto">Open Prediction Settings</a>
       </div>
     </div>
+
+   
 
   </div>
 </div>
@@ -419,6 +421,7 @@ createApp({
       localStorage.removeItem("local_email");
       localStorage.removeItem("local_role");
       localStorage.removeItem("local_login_time");
+      localStorage.removeItem("local_id_token");
 
       localStorage.removeItem("teacher_uid");
       localStorage.removeItem("teacher_email");

@@ -9,13 +9,21 @@
 //   lrn, learner_name, sex, birthdate, age, weight_kg, height_m,
 //   school_year (required, must match active year),
 //   school_name, district, division, region, school_id, grade_level, section, track_strand, remarks
-header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type");
-header("Access-Control-Allow-Methods: POST");
+header('Content-Type: application/json');
+header('Cache-Control: no-store');
+ini_set('display_errors', '0');
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse']);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Use POST to add a student.']);
+    exit;
+}
 
-include "../db.php";
+include __DIR__ . '/db.php';
 require __DIR__ . "/who_classifier.php";
+require_once __DIR__ . '/student_sections.php';
 
 $data = json_decode(file_get_contents("php://input"), true);
 
@@ -52,6 +60,12 @@ if (!empty($missing)) {
     echo json_encode(["success" => false, "message" => "Missing required field(s): " . implode(", ", $missing) . "."]);
     exit;
 }
+if (!is_numeric($age) || (float)$age <= 0 || !is_numeric($weightKg) || (float)$weightKg <= 0
+    || !is_numeric($heightM) || (float)$heightM <= 0) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Age, weight, and height must be greater than zero.']);
+    exit;
+}
 
 // LRN must be numeric (column is bigint).
 if (!ctype_digit($lrn)) {
@@ -77,61 +91,70 @@ if ($schoolYear !== $activeYear) {
     exit;
 }
 
-// --- Duplicate check: LRN unique per school year ---
-$dup = $conn->prepare("SELECT record_id FROM sf8_student_records WHERE lrn = ? AND school_year = ? LIMIT 1");
-$dup->bind_param("is", $lrn, $schoolYear);
-$dup->execute();
-$dup->store_result();
-if ($dup->num_rows > 0) {
-    echo json_encode(["success" => false, "message" => "A student with LRN $lrn already exists for school year $schoolYear."]);
-    exit;
-}
-$dup->close();
-
 // --- Compute metrics ---
 $ageMonths     = whoAgeToMonths($age);
 $bmi           = whoComputeBMI($weightKg, $heightM);
 $heightSquared = round((float)$heightM * (float)$heightM, 4);
 $bmiCategory   = whoBmiCategory($bmi, $ageMonths, $sex);
-$heightForAge  = whoHeightForAge($heightM, $ageMonths);
+$heightForAge  = whoHeightForAge($heightM, (float)$age * 12, $sex);
 
-// upload_id 0 marks a manually-entered record (no CSV upload behind it).
-$uploadId = 0;
-
-$stmt = $conn->prepare(
-    "INSERT INTO sf8_student_records
-     (lrn, upload_id, school_name, district, division, region, school_id, grade_level,
-      section, track_strand, school_year, learner_name, birthdate, age, sex,
-      weight_kg, height_m, height_squared, bmi, bmi_category, height_for_age, remarks)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-);
-
-$stmt->bind_param(
-    "iissssssssssssssdddsss",
-    $lrn, $uploadId, $schoolName, $district, $division, $region, $schoolId, $gradeLevel,
-    $section, $trackStrand, $schoolYear, $learnerName, $birthdate, $age, $sex,
-    $weightKg, $heightM, $heightSquared, $bmi, $bmiCategory, $heightForAge, $remarks
-);
-
-if ($stmt->execute()) {
-    echo json_encode([
-        "success" => true,
-        "message" => "Student added successfully.",
-        "record" => [
-            "record_id"      => $stmt->insert_id,
-            "lrn"            => $lrn,
-            "learner_name"   => $learnerName,
-            "bmi"            => $bmi,
-            "bmi_category"   => $bmiCategory,
-            "height_for_age" => $heightForAge,
-            "school_year"    => $schoolYear
-        ]
-    ]);
-} else {
-    if ($conn->errno === 1062) {
-        echo json_encode(["success" => false, "message" => "Duplicate: LRN $lrn already exists for $schoolYear."]);
+$conn->begin_transaction();
+try {
+    $find = $conn->prepare('SELECT record_id, profile_status FROM sf8_student_records WHERE lrn = ? AND school_year = ? LIMIT 1 FOR UPDATE');
+    $find->bind_param('ss', $lrn, $schoolYear);
+    $find->execute();
+    $existing = $find->get_result()->fetch_assoc();
+    $find->close();
+    require_once __DIR__ . '/sf8_approval_validation.php';
+    $candidates = clinicSf8IdentityCandidates($conn, $schoolYear, $learnerName, $lrn);
+    if ($candidates) throw new DomainException('A learner with this name and school year has a different LRN. Review the existing record before saving.');
+    $values = [$schoolName, $district, $division, $region, $schoolId, $gradeLevel,
+        $section, $trackStrand, $learnerName, $birthdate, $age, $sex,
+        $weightKg, $heightM, $heightSquared, $bmi, $bmiCategory, $heightForAge, $remarks];
+    if ($existing) {
+        if ($existing['profile_status'] !== 'Provisional') {
+            throw new DomainException("A complete student record with this LRN already exists for school year $schoolYear.");
+        }
+        $recordId = (int)$existing['record_id'];
+        $update = $conn->prepare("UPDATE sf8_student_records SET school_name=?, district=?, division=?, region=?, school_id=?,
+            grade_level=?, section=?, track_strand=?, learner_name=?, birthdate=?, age=?, sex=?, weight_kg=?,
+            height_m=?, height_squared=?, bmi=?, bmi_category=?, height_for_age=?, remarks=?, profile_status='Complete'
+            WHERE record_id=?");
+        clinicSectionBind($update, array_merge($values, [$recordId]));
+        $update->execute();
+        $update->close();
+        $message = 'Provisional learner completed from manual Student Information.';
     } else {
-        echo json_encode(["success" => false, "message" => "Could not save student: " . $conn->error]);
+        $insert = $conn->prepare("INSERT INTO sf8_student_records
+            (lrn, upload_id, school_name, district, division, region, school_id, grade_level,
+             section, track_strand, school_year, learner_name, birthdate, age, sex,
+             weight_kg, height_m, height_squared, bmi, bmi_category, height_for_age, remarks, profile_status)
+            VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Complete')");
+        clinicSectionBind($insert, array_merge([$lrn], array_slice($values, 0, 8),
+            [$schoolYear], array_slice($values, 8)));
+        $insert->execute();
+        $recordId = $insert->insert_id;
+        $insert->close();
+        $message = 'Student added successfully.';
     }
+    clinicEnsureStudentSections($conn, $recordId);
+    $conn->commit();
+    echo json_encode([
+        'success' => true,
+        'message' => $message,
+        'record' => [
+            'record_id' => $recordId, 'lrn' => $lrn, 'learner_name' => $learnerName,
+            'bmi' => $bmi, 'bmi_category' => $bmiCategory,
+            'height_for_age' => $heightForAge, 'school_year' => $schoolYear,
+        ],
+    ]);
+} catch (Throwable $e) {
+    $conn->rollback();
+    $duplicate = $e instanceof mysqli_sql_exception && $e->getCode() === 1062;
+    http_response_code($e instanceof DomainException || $duplicate ? 409 : 503);
+    echo json_encode(['success' => false, 'message' => $e instanceof DomainException ? $e->getMessage()
+        : ($duplicate ? 'A student with this LRN already exists for the school year.'
+            : 'Student could not be saved. Check the database migration and try again.')]);
 }
+$conn->close();
 ?>

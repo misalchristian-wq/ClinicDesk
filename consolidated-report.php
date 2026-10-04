@@ -345,7 +345,7 @@ createApp({
       this.loading = true;
       this.error = null;
       try {
-        const res = await fetch(`api/get_all_reports.php?school_year=${encodeURIComponent(this.selectedSchoolYear)}&cache_buster=${Date.now()}`);
+        const res = await fetch(`api/get_all_reports.php?school_year=${encodeURIComponent(this.selectedSchoolYear)}&cache_buster=${Date.now()}`, {headers:{Authorization:'Bearer ' + localStorage.getItem('local_id_token')}});
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.success) {
@@ -364,5 +364,6 @@ createApp({
   }
 }).mount("#app");
 </script>
+<script src="assets/table-pagination.js" defer></script>
 </body>
 </html>

@@ -1,15 +1,22 @@
 <?php
 // api/get_monitoring_data.php
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
+header('Cache-Control: no-store');
 
 ini_set("display_errors", 0);
 error_reporting(E_ALL);
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse']);
+require_once __DIR__ . '/who_classifier.php';
 
 try {
     include __DIR__ . "/../db.php";
 
-    $school_year = trim($_GET["school_year"] ?? "");
+    $school_year = trim((string)($_GET["school_year"] ?? ""));
+    if (!preg_match('/^\d{4}-\d{4}$/', $school_year)) {
+        throw new InvalidArgumentException('Select a valid school year.');
+    }
 
     $syWhere  = $school_year ? "AND s.school_year = ?" : "";
     $syParams = $school_year ? [$school_year] : [];
@@ -90,6 +97,8 @@ try {
 
     $records = [];
     while ($row = $result->fetch_assoc()) {
+        $row['height_for_age'] = is_numeric($row['age']) && is_numeric($row['height_m'])
+            ? whoHeightForAge($row['height_m'], (float)$row['age'] * 12, $row['sex']) : '';
         // derive risk level if no ML prediction yet
         if (empty($row["predicted_risk_level"])) {
             $b = strtolower($row["bmi_category"] ?? "");
@@ -142,9 +151,11 @@ try {
     $conn->close();
 
 } catch (Throwable $e) {
+    http_response_code($e instanceof InvalidArgumentException ? 422 : 503);
+    if (!($e instanceof InvalidArgumentException)) error_log('ClinicDesk nutrition monitoring: ' . $e->getMessage());
     echo json_encode([
         "success" => false,
-        "message" => "Server error: " . $e->getMessage(),
+        "message" => $e instanceof InvalidArgumentException ? $e->getMessage() : 'Could not load nutritional monitoring data.',
     ]);
 }
 ?>

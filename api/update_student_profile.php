@@ -1,11 +1,19 @@
 <?php
 // api/update_student_profile.php
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type");
-header("Access-Control-Allow-Methods: POST");
+header('Cache-Control: no-store');
+ini_set('display_errors', '0');
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse']);
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Use POST to update a learner.']);
+    exit;
+}
 
 include "db.php";
+require_once __DIR__ . '/who_classifier.php';
 
 $data = json_decode(file_get_contents("php://input"), true);
 
@@ -19,7 +27,8 @@ $section = trim($data["section"] ?? "");
 $weight_kg = floatval($data["weight_kg"] ?? 0);
 $height_m = floatval($data["height_m"] ?? 0);
 $bmi_category = trim($data["bmi_category"] ?? "");
-$height_for_age = trim($data["height_for_age"] ?? "");
+$height_for_age = is_numeric($age) && $height_m > 0
+    ? whoHeightForAge($height_m, (float)$age * 12, $sex) : '';
 $remarks = trim($data["remarks"] ?? "");
 
 if ($record_id <= 0 || $learner_name === "") {

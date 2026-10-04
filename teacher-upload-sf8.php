@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/lib/sf8_detection.php'; ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -510,7 +511,7 @@
           <div class="step-number">2</div>
           <div>
             <strong>Auto-check</strong>
-            <p>ClinicDesk reads cell A1 and the school year, flagging problems per file.</p>
+            <p>ClinicDesk identifies the SF8 type from its column headers and checks the school year.</p>
           </div>
         </div>
         <div class="step-item">
@@ -523,8 +524,8 @@
       </div>
 
       <div class="alert alert-info">
-        <strong>Reminder:</strong> Put the report purpose/code in <strong>cell A1</strong>.
-        The school year is read from each file and must match the active year set by the clinic nurse.
+        <strong>Reminder:</strong> The report type is detected from the SF8 columns, even when cell A1 is wrong or blank.
+        The school year must match the active year set by the clinic nurse.
       </div>
 
       <!-- Summary tally -->
@@ -582,7 +583,7 @@
           </div>
 
           <div v-if="f.reportCode" class="fs-meta">
-            Type: <strong>{{ f.reportCode }}</strong>
+            Detected type: <strong>{{ f.reportPurpose || f.reportCode }}</strong>
             <span v-if="f.schoolYear"> · School Year: <strong>{{ f.schoolYear }}</strong></span>
           </div>
 
@@ -594,7 +595,7 @@
           <div v-if="f.previewRows.length > 0" class="mini-preview">
             <table class="table table-bordered table-sm">
               <tbody>
-                <tr v-for="(row, ri) in f.previewRows.slice(0, 10)" :key="ri">
+                <tr v-for="(row, ri) in f.previewRows" :key="ri">
                   <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
                 </tr>
               </tbody>
@@ -643,14 +644,14 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
+<script>window.clinicFirebaseApiKey = "AIzaSyBqPdtJJhCkvbCm82QjNbhPjerbv0Mjqjc";</script>
+<script src="assets/sf8-security.js"></script>
 <script>
 const { createApp } = Vue;
 
 createApp({
   data() {
     return {
-      cloudName: "du3qpurjj",
-      uploadPreset: "atansproject-prod-unsigned",
 
       files: [],              // per-file objects (see makeFileEntry)
       nextFileId: 1,
@@ -660,21 +661,7 @@ createApp({
       message: "",
       messageType: "success",
 
-      allowedPurposes: {
-        "Students Information": "students_information",
-        "OKD and LHAS": "okd_lhas",
-        "Immunization & Nutritional Status": "immunization_nutritional_status",
-        "Deworming & WIFA": "deworming_wifa",
-        "Adolescent Reproductive Health / ARH": "adolescent_reproductive_health_arh",
-        "Comprehensive Tobacco Control": "comprehensive_tobacco_control",
-
-        "students_information": "students_information",
-        "okd_lhas": "okd_lhas",
-        "immunization_nutritional_status": "immunization_nutritional_status",
-        "deworming_wifa": "deworming_wifa",
-        "adolescent_reproductive_health_arh": "adolescent_reproductive_health_arh",
-        "comprehensive_tobacco_control": "comprehensive_tobacco_control"
-      }
+      reportSignatures: <?php echo json_encode(sf8ReportSignatures(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
   },
 
@@ -693,7 +680,7 @@ createApp({
       window.location.href = "login.php";
     }
 
-    this.loadActiveSchoolYear();
+    this._schoolYearReady = this.loadActiveSchoolYear();
   },
 
   methods: {
@@ -743,6 +730,20 @@ createApp({
       return 0;
     },
 
+    identifyReportType(rows) {
+      const valueAt = cell => {
+        const [, column, row] = cell.match(/^([A-Z]+)(\d+)$/);
+        let index = 0;
+        for (const letter of column) index = index * 26 + letter.charCodeAt(0) - 64;
+        return String(rows[Number(row) - 1]?.[index - 1] ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      };
+      const common = { B9: 'lrn', C9: 'learnersname', G9: 'sex', H9: 'birthdate', I9: 'age' };
+      if (!Object.entries(common).every(([cell, expected]) => valueAt(cell).includes(expected))) return null;
+      const matches = Object.entries(this.reportSignatures).filter(([, signature]) =>
+        Object.entries(signature.columns).every(([cell, expected]) => valueAt(cell).includes(expected)));
+      return matches.length === 1 ? { code: matches[0][0], label: matches[0][1].label } : null;
+    },
+
     makeFileEntry(file) {
       return {
         id: this.nextFileId++,
@@ -764,10 +765,10 @@ createApp({
       event.target.value = ""; // allow re-selecting the same file later
 
       for (const file of picked) {
-        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+        if (!file.name.toLowerCase().endsWith(".xlsx") || file.size > 10 * 1024 * 1024) {
           const bad = this.makeFileEntry(file);
           bad.status = "invalid";
-          bad.error = "Only .xlsx files are allowed.";
+          bad.error = "Only .xlsx files up to 10 MB are allowed.";
           this.files.push(bad);
           continue;
         }
@@ -801,20 +802,14 @@ createApp({
             const worksheet = workbook.Sheets[sheetName];
             const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", raw: true });
 
-            // A1 = report purpose/code
-            const detectedPurpose = rows[0]?.[0] ? String(rows[0][0]).trim() : "";
-            if (!detectedPurpose) {
-              this.failFile(entry, "Cell A1 is empty — put the report purpose/code in A1.");
-              return resolve();
-            }
-            if (!this.allowedPurposes[detectedPurpose]) {
-              this.failFile(entry, `Unrecognised report type in A1: "${detectedPurpose}". Check that A1 matches one of the allowed report codes.`);
-              return resolve();
-            }
-
-            entry.reportPurpose = detectedPurpose;
-            entry.reportCode = this.allowedPurposes[detectedPurpose];
             entry.previewRows = rows.slice(0, 40);
+            const detected = this.identifyReportType(rows);
+            if (!detected) {
+              this.failFile(entry, "Could not identify the SF8 type from its column headers. Check that this is a supported SF8 template.");
+              return resolve();
+            }
+            entry.reportPurpose = detected.label;
+            entry.reportCode = detected.code;
 
             // School year (row 7, next to the "School Year" label)
             const syResult = this.readSchoolYear(rows);
@@ -934,54 +929,8 @@ createApp({
       try {
         const formData = new FormData();
         formData.append("file", entry.file);
-        formData.append("upload_preset", this.uploadPreset);
-
-        const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${this.cloudName}/raw/upload`;
-        const cloudResponse = await fetch(cloudinaryUrl, { method: "POST", body: formData });
-        const cloudText = await cloudResponse.text();
-
-        let cloudResult;
-        try {
-          cloudResult = JSON.parse(cloudText);
-        } catch (jsonError) {
-          entry.status = "failed";
-          entry.error = "Cloudinary did not return JSON.";
-          return false;
-        }
-
-        if (!cloudResponse.ok || cloudResult.error) {
-          entry.status = "failed";
-          entry.error = "Cloudinary upload failed: " + (cloudResult.error?.message || "Unknown error");
-          return false;
-        }
-
-        const teacherEmail = localStorage.getItem("teacher_email") || "Unknown Teacher";
-
-        const saveResponse = await fetch("api/save_sf8_upload.php", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            file_name: entry.name,
-            file_type: "xlsx",
-            report_purpose: entry.reportPurpose,
-            report_code: entry.reportCode,
-            cloudinary_public_id: cloudResult.public_id,
-            cloudinary_url: cloudResult.secure_url,
-            uploaded_by_email: teacherEmail,
-            school_year: entry.schoolYear,
-            extracted_rows: entry.extractedRows
-          })
-        });
-
-        const saveText = await saveResponse.text();
-        let saveResult;
-        try {
-          saveResult = JSON.parse(saveText);
-        } catch (jsonError) {
-          entry.status = "failed";
-          entry.error = "Save endpoint did not return JSON.";
-          return false;
-        }
+        const saveResponse = await clinicSf8Fetch("api/upload_sf8.php", { method: "POST", body: formData, authRole: "Teacher" });
+        const saveResult = await saveResponse.json();
 
         if (saveResult.success) {
           entry.status = "uploaded";
@@ -1001,5 +950,6 @@ createApp({
   }
 }).mount("#app");
 </script>
+<script src="assets/table-pagination.js" defer></script>
 </body>
 </html>

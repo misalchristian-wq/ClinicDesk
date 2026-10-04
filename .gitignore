@@ -1,0 +1,36 @@
+.venv-ml/
+**/__pycache__/
+
+/api/firebase-service-account.json
+*service-account*.json
+*credentials*.json
+
+# Local credentials and machine-specific settings
+/db.php
+/api/db.php
+/api/cloudinary_config.php
+/api/mail_config.php
+/api/info.txt
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.db
+
+# Database exports and private runtime data
+/db.sql
+/clinicdesk.sql
+/uploads/
+/storage/
+/exports/
+/tmp/
+/temp/
+/backups/
+/logs/
+*.log
+/venv/
+/ml_service/venv/

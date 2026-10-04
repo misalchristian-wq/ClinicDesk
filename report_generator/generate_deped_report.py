@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 generate_deped_report.py
-Fills the official DepEd Part IX xlsx template with ClinicDesk data for a
-school year, WITHOUT altering the template's design or formulas. Only blank
-leaf cells are written; DepEd SUM() totals recalculate on their own.
+Fills the supplied DepEd Part IX workbook with ClinicDesk records and saved
+school answers for a selected year. The template's layout and formulas are
+preserved; DepEd SUM() totals recalculate when opened in Excel.
 
 Usage: python3 generate_deped_report.py <template> <output> <school_year> <data.json>
-data.json: {"students":[...], "immunization":[...], "deworming":[...]}
-Sheets filled: Table 1.B (nutrition), Table 1.A (immunization), Table 1.C (deworming),
-              Table 1.D (WIFA), Box 1, Boxes 5 & 6.
+data.json includes student/program records and saved_reports keyed by section.
+The workbook includes record-based Tables 1.A-1.D, Box 1 and Boxes 5-6,
+plus saved nurse answers for Boxes 2-4 and 8-11.
 """
 import sys, json
 import datetime
@@ -23,14 +23,129 @@ def norm_grade(g):
     return "Grade " + s if s.isdigit() else None
 
 def norm_sex(x):
-    return "M" if str(x).strip().lower().startswith("m") else "F"
+    value = str(x or "").strip().lower()
+    if value.startswith("m"): return "M"
+    if value.startswith("f"): return "F"
+    return None
 
 def truthy(v):
     return str(v).strip().lower() in ("1", "yes", "y", "true", "t")
 
 def put(ws, col, row, val):
-    if val:
+    if val is not None and val != "":
         ws[f"{col}{row}"] = val
+
+def choice(value):
+    """Return an explicit Yes/No answer; an unanswered question stays blank."""
+    text = str(value or "").strip().lower()
+    return True if text == "yes" else False if text == "no" else None
+
+def check_mark(selected):
+    """Render the paper form's check boxes without Excel TRUE/FALSE text."""
+    return "/" if selected else None
+
+def fill_checkboxes(ws, answers, mapping):
+    selected = set(answers or [])
+    for label, cell in mapping.items():
+        ws[cell] = check_mark(label in selected)
+
+def fill_school_boxes(wb, saved):
+    """Use saved nurse answers for the template's school-level sections."""
+    filled = {}
+    if "IX. Box 1" in wb.sheetnames and "box1" in saved:
+        fill_checkboxes(wb["IX. Box 1"], saved["box1"].get("referralConcerns"), {
+            "Medical, dental and nutritional": "U8",
+            "Mental health and well-being": "U9",
+            "Adolescent reproductive health": "U10",
+            "Drug, substance and tobacco use": "U11",
+        })
+        filled["box1_school"] = 1
+    if "IX. Boxes 2 & 3; Table 2" in wb.sheetnames and "box2_3" in saved:
+        ws = wb["IX. Boxes 2 & 3; Table 2"]
+        d = saved["box2_3"]
+        for field, cell in (("hasSchoolClinic", "AA6"), ("visitedBySDO", "AA8"), ("waterForDrinking", "Z39")):
+            ws[cell] = check_mark(choice(d.get(field)))
+        if choice(d.get("visitedBySDO")):
+            ws["N10"] = int(d.get("sdoVisits") or 0)
+        # The supplied template validates SDO visits against a TRUE/FALSE cell.
+        # Match the visible slash instead, retaining the original guidance.
+        ws["Z10"] = '=IF(AND(clinic_sdo_personnel_yes="/",clinic_sdo_personnel_ifyes=""),"Please specify.",IF(AND(clinic_sdo_personnel_yes<>"/",clinic_sdo_personnel_ifyes<>""),"Please check the \'Yes\' box if you have an entry.",""))'
+        equipment = d.get("clinicEquipment") or {}
+        for row, label in enumerate(("Bathroom", "Hospital/Clinic Bed", "Dental Chair", "First Aid Kit", "Height Tool", "Weighing Scale", "Autoclave/Sterilizer", "BP Apparatus", "Nebulizer"), 15):
+            status = str(equipment.get(label) or "").lower()
+            if status:
+                ws[f"U{row}"] = check_mark(status == "functional")
+                ws[f"Z{row}"] = check_mark(status in ("non-functional", "non functional"))
+        fill_checkboxes(ws, d.get("waterSources"), {"Piped water": "Z34", "Water Well": "Z35", "Rainwater Catchment": "Z36", "Natural Source": "Z37"})
+        filled["box2_3"] = 1
+    if "IX. Boxes 2 & 3; Table 2" in wb.sheetnames and "box4" in saved:
+        ws = wb["IX. Boxes 2 & 3; Table 2"]
+        cases = saved["box4"].get("mentalHealthCases") or {}
+        for case_type, row in (("deathInside", 56), ("deathOutside", 58), ("attemptInside", 60), ("attemptOutside", 62)):
+            values = cases.get(case_type) or {}
+            for group, col in (("elemLearners", "N"), ("elemPersonnel", "S"), ("jhsLearners", "X"), ("jhsPersonnel", "AC"), ("shsLearners", "AH"), ("shsPersonnel", "AM")):
+                put(ws, col, row, values.get(group))
+        filled["table2"] = 1
+    if "IX. Box 4" in wb.sheetnames and "box4" in saved:
+        ws = wb["IX. Box 4"]
+        d = saved["box4"]
+        for field, cell in (("hasGuidanceOffice", "U6"), ("hasMentalHealthTraining", "AJ34")):
+            answer = choice(d.get(field))
+            ws[cell] = check_mark(answer)
+        for level, row in (("JHS", 14), ("SHS", 16)):
+            counts = d.get("counseling" + level) or {}
+            for field, col in (("male", "M"), ("female", "S")):
+                put(ws, col, row, counts.get(field))
+        for level, row in (("JHS", 27), ("SHS", 29)):
+            counts = d.get("vulnerable" + level) or {}
+            for field, col in (("muslim", "M"), ("ip", "S"), ("lwd", "Y")):
+                put(ws, col, row, counts.get(field))
+        topics = d.get("mentalHealthTraining") or {}
+        for field, col in (("bullying", "M"), ("mentalHealth", "S"), ("suicidePrevention", "Y"), ("selfCare", "AE"), ("psychologicalFirstAid", "AK"), ("crisisResponse", "AQ")):
+            put(ws, col, 46, topics.get(field))
+        filled["box4"] = 1
+    if "IX. Boxes 5 & 6" in wb.sheetnames and "box5_6" in saved:
+        ws = wb["IX. Boxes 5 & 6"]
+        d = saved["box5_6"]
+        answer = choice(d.get("hasSupportCenter"))
+        ws["V13"] = check_mark(answer)
+        fill_checkboxes(ws, d.get("iecMaterials"), {"No Smoking Signages": "AS27", "Poster prohibiting cigarette sales": "AS28"})
+        fill_checkboxes(ws, d.get("storesSelling"), {"Tobacco products": "AS31", "Vape/e-cigarettes": "AS32"})
+        intervention = d.get("tobaccoIntervention") or {}
+        for level, col in (("jhs", "Z"), ("shs", "AG")):
+            values = intervention.get(level) or {}
+            put(ws, col, 49, values.get("users"))
+            put(ws, col, 51, values.get("bti"))
+        filled["box5_6_school"] = 1
+    if "IX. Boxes 7 to 9" in wb.sheetnames and "box8_9" in saved:
+        ws = wb["IX. Boxes 7 to 9"]
+        d = saved["box8_9"]
+        answer = choice(d.get("drugEducation"))
+        ws["Z6"] = check_mark(answer)
+        fill_checkboxes(ws, d.get("drugComponents"), {
+            "Curriculum integration": "Z9", "Extra-curricular activities": "Z10",
+            "Barangay Anti-Drug Abuse Council partnership": "Z11"})
+        for grade, col in ((7,"D"),(8,"G"),(9,"J"),(10,"M"),(11,"S"),(12,"V")):
+            put(ws, col, 17, (d.get("drugLifeSkills") or {}).get(f"g{grade}"))
+        for field, cell in (("sanitaryPermit", "W32"), ("healthCertificates", "W34"), ("hasKitchen", "W36")):
+            answer = choice(d.get(field))
+            ws[cell] = check_mark(answer)
+        manager = str(d.get("canteenManager") or "")
+        for label, cell in (("School", "W28"), ("Teacher-Coop", "W29")):
+            ws[cell] = check_mark(manager == label)
+        if manager == "Others": ws["M30"] = d.get("canteenManagerOther") or "Others"
+        fill_checkboxes(ws, d.get("feedingFundSources"), {"School MOOE": "T46", "School Canteen Fund": "T47", "LGU Fund": "T48", "PTA Fund": "T49", "Barangay Fund": "T50", "Private Individual/Sector Fund": "T51", "SBFP": "T52"})
+        fill_checkboxes(ws, d.get("agriResources"), {"Gulayan sa Paaralan": "T55", "Fish Pond": "T56", "Agricultural Crops": "T57", "Livestock": "T58"})
+        filled["box8_9"] = 1
+    if "IX. Boxes 10 & 11" in wb.sheetnames and "box10_11" in saved:
+        ws = wb["IX. Boxes 10 & 11"]
+        d = saved["box10_11"]
+        fill_checkboxes(ws, d.get("swmImplementation"), dict(zip(("Composting", "Trash collection point", "Poster/Slogan contest", "Posting signage", "Recycling projects", "Barangay SWM representative", "Use of paper plates/cups", "Use of recycled materials as teaching tools", "Use of reusable food containers", "Waste segregation"), (f"AB{row}" for row in range(8, 18)))))
+        fill_checkboxes(ws, d.get("stakeholders"), dict(zip(("Barangay", "Community leaders", "Local business partners", "Municipal/City government", "Parents"), (f"AB{row}" for row in range(20, 25)))))
+        fill_checkboxes(ws, d.get("sanitaryPadLocations"), {"School Canteen": "L34", "School Clinic": "L35", "Guidance Office": "L36"})
+        if "Others" in (d.get("sanitaryPadLocations") or []): ws["L37"] = d.get("sanitaryPadOther") or "Others"
+        filled["box10_11"] = 1
+    return filled
 
 # ---- Table 1.B Nutrition ----
 NUTRI_SHEET = "IX. Table 1.A & 1.B"
@@ -57,6 +172,7 @@ def fill_nutrition(ws, students, sy):
         grade = norm_grade(r.get("grade_level")); cat = norm_bmi(r.get("bmi_category"))
         if not grade or not cat: continue
         sex = norm_sex(r.get("sex"))
+        if not sex: continue
         counts[(grade,sex,cat)] = counts.get((grade,sex,cat),0)+1
     total = 0
     for (grade,sex,cat),n in counts.items():
@@ -82,11 +198,17 @@ def norm_vaccine(v):
 
 def fill_immunization(ws, immun, sy):
     counts = {}
-    for r in immun:
+    seen = set()
+    for index, r in enumerate(immun):
         if not truthy(r.get("immunized",1)): continue
         vac = norm_vaccine(r.get("vaccine")); grade = norm_grade(r.get("grade_level"))
         if not vac or not grade: continue
         sex = norm_sex(r.get("sex"))
+        if not sex: continue
+        learner = str(r.get("lrn") or "").strip() or ("unknown-row", index)
+        recipient = (learner, vac, grade, sex)
+        if recipient in seen: continue
+        seen.add(recipient)
         counts[(vac,grade,sex)] = counts.get((vac,grade,sex),0)+1
     total = 0
     for (vac,grade,sex),n in counts.items():
@@ -103,13 +225,19 @@ DEWORM_ROWS = {"Kinder":11,"Grade 1":12,"Grade 2":13,"Grade 3":14,"Grade 4":15,"
                "Grade 11":27,"Grade 12":28}
 
 def fill_deworming(ws, deworm, sy):
-    sbfp = {}; other = {}
-    for r in deworm:
+    sbfp = {}; other = {}; seen_sbfp = set(); seen_other = set()
+    for index, r in enumerate(deworm):
         grade = norm_grade(r.get("grade_level"))
         if not grade: continue
         sex = norm_sex(r.get("sex"))
-        if truthy(r.get("dewormed_sbfp")): sbfp[(grade,sex)] = sbfp.get((grade,sex),0)+1
-        if truthy(r.get("dewormed_other")): other[(grade,sex)] = other.get((grade,sex),0)+1
+        if not sex: continue
+        lrn = str(r.get("lrn") or "").strip()
+        learner = (lrn, str(r.get("school_year") or "").strip()) if lrn else ("unknown-row", index)
+        recipient = (learner, grade, sex)
+        if truthy(r.get("dewormed_sbfp")) and recipient not in seen_sbfp:
+            seen_sbfp.add(recipient); sbfp[(grade,sex)] = sbfp.get((grade,sex),0)+1
+        if truthy(r.get("dewormed_other")) and recipient not in seen_other:
+            seen_other.add(recipient); other[(grade,sex)] = other.get((grade,sex),0)+1
     total = 0
     for (grade,sex),n in sbfp.items():
         row = DEWORM_ROWS.get(grade)
@@ -121,9 +249,17 @@ def fill_deworming(ws, deworm, sy):
 
 # ---- Table 1.D WIFA (new) ----
 def fill_wifa(ws, deworm, sy):
-    # Group WIFA counts by grade and period (Jul-Sep, Jan-Mar) for females only
-    wifa_counts = {}  # (grade, period) -> count
-    for r in deworm:
+    # Count the recorded start and last given dose in the two report windows.
+    # Multiple administrations in the same window count one learner once.
+    wifa_counts = {}  # (grade, period) -> distinct learner count
+    try:
+        first_year, last_year = (int(part) for part in sy.split("-", 1))
+    except (ValueError, AttributeError):
+        return 0
+    ws["C35"] = f"Number of female learners given WIFA supplements from July to September {first_year}"
+    ws["C37"] = f"Number of female learners given WIFA supplements from January to March {last_year}"
+    seen = set()
+    for index, r in enumerate(deworm):
         # Skip if not WIFA or not female
         if not truthy(r.get("wifa")):
             continue
@@ -139,42 +275,40 @@ def fill_wifa(ws, deworm, sy):
             continue
         try:
             dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
-            month = dt.month
-            if 7 <= month <= 9:
+            if dt.year == first_year and 7 <= dt.month <= 9:
                 period = "jul_sep"
-            elif 1 <= month <= 3:
+            elif dt.year == last_year and 1 <= dt.month <= 3:
                 period = "jan_mar"
             else:
                 continue
-        except:
+        except ValueError:
             continue
+        lrn = str(r.get("lrn") or "").strip()
+        learner = (lrn, str(r.get("school_year") or "").strip()) if lrn else ("unknown-row", index)
+        recipient = (learner, grade, period)
+        if recipient in seen: continue
+        seen.add(recipient)
         key = (grade, period)
         wifa_counts[key] = wifa_counts.get(key, 0) + 1
 
-    # Map grade to column letters (female only, single column)
+    # Each grade's output occupies a merged block; use its top-left cell.
     grade_cols = {
         "Grade 7": "Q",
-        "Grade 8": "U",
-        "Grade 9": "Y",
-        "Grade 10": "AC",
+        "Grade 8": "V",
+        "Grade 9": "AA",
+        "Grade 10": "AF",
         "Grade 11": "AP",
-        "Grade 12": "AT",
+        "Grade 12": "AU",
     }
 
-    # Row numbers per level and period
-    rows = {
-        "jhs": {"jul_sep": 35, "jan_mar": 37},
-        "shs": {"jul_sep": 36, "jan_mar": 38},
-    }
+    # Both JHS and SHS grade blocks span rows 35-36 and 37-38.
+    rows = {"jul_sep": 35, "jan_mar": 37}
 
     total = 0
     for (grade, period), count in wifa_counts.items():
         col = grade_cols.get(grade)
         if not col: continue
-        grade_num = int(grade.split()[-1]) if grade.startswith("Grade") else None
-        if grade_num is None: continue
-        level = "jhs" if grade_num <= 10 else "shs"
-        row = rows[level].get(period)
+        row = rows.get(period)
         if row:
             put(ws, col, row, count)
             total += count
@@ -303,7 +437,18 @@ def main():
     arh = data.get("arh", []); peer_educators = data.get("peer_educators", 0); tobacco = data.get("tobacco", [])
     lhas = data.get("lhas", [])
     wb = openpyxl.load_workbook(template)
+    school = data.get("school") or {}
+    if school.get("name") and school.get("id") and "Part IX. School Health" in wb.sheetnames:
+        wb["Part IX. School Health"]["D5"] = f"{school['name']} - {school['id']}"
+    # The supplied workbook is a reusable school-year format, not a fixed-year report.
+    for ws in wb.worksheets:
+        for row in ws.iter_rows(min_row=1, max_row=min(ws.max_row, 55)):
+            for cell in row:
+                if cell.data_type == "s" and isinstance(cell.value, str) and "SY 2025" in cell.value:
+                    cell.value = cell.value.replace("SY 2025–2026", "SY " + sy).replace("SY 2025-2026", "SY " + sy).replace("SY 2025\ufffd2026", "SY " + sy)
+                    cell.value = cell.value.replace("March 31, 2026", "March 31, " + sy.split("-")[1])
     filled = {"nutrition":0,"immunization":0,"deworming":0,"box5_6":0,"lhas":0, "wifa":0}
+    filled.update(fill_school_boxes(wb, data.get("saved_reports") or {}))
     if NUTRI_SHEET in wb.sheetnames:
         filled["nutrition"] = fill_nutrition(wb[NUTRI_SHEET], students, sy)
         filled["immunization"] = fill_immunization(wb[NUTRI_SHEET], immun, sy)
@@ -314,6 +459,14 @@ def main():
         filled["box5_6"] = fill_box5_box6(wb[BOX56_SHEET], arh, peer_educators, tobacco)
     if LHAS_SHEET in wb.sheetnames:
         filled["lhas"] = fill_lhas(wb[LHAS_SHEET], lhas, sy)
+    # The official Part IX template contains FALSE placeholders in answer boxes.
+    # Normalize those as well so untouched boxes never display TRUE/FALSE in Excel.
+    for ws in wb.worksheets:
+        if ws.title.startswith("IX."):
+            for row in ws:
+                for cell in row:
+                    if isinstance(cell.value, bool):
+                        cell.value = check_mark(cell.value)
     wb.save(output)
     print(json.dumps({"success":True,"message":f"Report generated for {sy}.","filled":filled,"output":output}))
 

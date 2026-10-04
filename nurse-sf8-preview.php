@@ -9,61 +9,107 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
   <style>
-    /* Your existing styles remain unchanged */
-    body {
-      background: #f4f8fb;
-      font-family: Arial, sans-serif;
+    :root {
+      --clinic-primary: #0f766e;
+      --clinic-secondary: #14b8a6;
+      --clinic-accent: #0ea5e9;
+      --clinic-bg: #eef8fb;
+      --clinic-light: #f0fdfa;
+      --clinic-card: rgba(255, 255, 255, 0.96);
+      --clinic-border: #d9eef0;
+      --clinic-text: #16323f;
+      --clinic-muted: #6b7d87;
+      --clinic-shadow: 0 12px 32px rgba(15, 118, 110, 0.10);
+      --clinic-radius: 22px;
     }
-
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      background: radial-gradient(circle at top left, rgba(20,184,166,.16), transparent 25%),
+        radial-gradient(circle at top right, rgba(14,165,233,.12), transparent 25%),
+        linear-gradient(135deg, #eef8fb, #f8fcfd);
+      font-family: Arial, sans-serif;
+      color: var(--clinic-text);
+    }
     .wrapper {
-      max-width: 1400px;
-      margin: 35px auto;
+      max-width: 1450px;
+      margin: 28px auto;
       padding: 20px;
     }
-
     .header-box {
-      background: linear-gradient(135deg, #198754, #20c997);
+      background: linear-gradient(135deg, var(--clinic-primary), var(--clinic-secondary));
       color: white;
-      padding: 28px;
-      border-radius: 18px;
+      padding: 34px;
+      border-radius: 28px;
       margin-bottom: 24px;
+      box-shadow: 0 16px 38px rgba(15,118,110,.22);
+      position: relative;
+      overflow: hidden;
     }
-
+    .header-box::before, .header-box::after { content: ""; position: absolute; border-radius: 50%; background: rgba(255,255,255,.13); }
+    .header-box::before { width: 240px; height: 240px; top: -100px; right: -75px; }
+    .header-box::after { width: 190px; height: 190px; bottom: -100px; left: 35%; }
+    .header-content, .header-actions { position: relative; z-index: 1; }
+    .header-icon { width: 62px; height: 62px; border-radius: 20px; background: rgba(255,255,255,.18);
+      border: 2px solid rgba(255,255,255,.35); display: flex; align-items: center; justify-content: center;
+      font-size: 29px; flex-shrink: 0; }
+    .header-box h1 { font-size: 38px; font-weight: 900; margin: 0 0 6px; }
+    .header-box p { color: rgba(255,255,255,.92); margin: 0; }
+    .btn-back { background: #fff; color: var(--clinic-primary); border: 0; border-radius: 15px;
+      padding: 11px 18px; font-weight: 800; text-decoration: none; box-shadow: 0 12px 28px rgba(0,0,0,.12); }
+    .btn-back:hover { color: var(--clinic-primary); background: #ecfeff; }
     .card {
-      border: none;
-      border-radius: 18px;
-      box-shadow: 0 8px 22px rgba(0,0,0,0.08);
+      border: 1px solid var(--clinic-border);
+      border-radius: var(--clinic-radius);
+      background: var(--clinic-card);
+      box-shadow: var(--clinic-shadow);
     }
-
-    .table th {
-      background: #eef4f7;
-      white-space: nowrap;
-    }
-
-    .table td {
-      white-space: nowrap;
-    }
-
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+    .section-heading { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 900;
+      color: var(--clinic-primary); margin-bottom: 20px; }
+    .section-heading i { width: 37px; height: 37px; border-radius: 12px; background: var(--clinic-light);
+      display: inline-flex; align-items: center; justify-content: center; }
+    .info-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .info-item { min-width: 0; padding: 12px 14px; background: #f7fcfc; border: 1px solid #e6f1f2; border-radius: 14px; }
+    .info-label { display: block; color: var(--clinic-muted); font-size: 11px; font-weight: 800;
+      letter-spacing: .6px; text-transform: uppercase; margin-bottom: 5px; }
+    .info-value { font-weight: 700; overflow-wrap: anywhere; }
+    .records-count { background: var(--clinic-light); border: 1px solid #b8e9e3; color: var(--clinic-primary);
+      border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 800; }
+    .records-subtitle { color: var(--clinic-muted); margin: 4px 0 0; font-size: 14px; }
+    .records-table { border: 1px solid var(--clinic-border); border-radius: 15px; overflow-x: auto; }
+    .records-table .table { margin-bottom: 0; }
+    .records-table .table th { background: #e8f7f4; color: var(--clinic-primary); font-size: 12px;
+      letter-spacing: .3px; text-transform: uppercase; white-space: nowrap; padding: 13px 12px; }
+    .records-table .table td { white-space: nowrap; padding: 11px 12px; border-color: #e6f0f1; }
+    .records-table .table tbody tr:hover { background: #f4fbfa; }
     .btn-green {
-      background: #198754;
+      background: var(--clinic-primary);
       color: white;
-      font-weight: 600;
+      border-radius: 12px;
+      padding: 10px 17px;
+      font-weight: 800;
     }
-
-    .btn-green:hover {
-      background: #146c43;
-      color: white;
-    }
-
+    .btn-green:hover { background: #0b625b; color: white; }
+    .btn-reject { border-radius: 12px; padding: 10px 17px; font-weight: 800; }
     .badge-purpose {
-      background: #e7f8f1;
-      color: #198754;
-      border: 1px solid #b7ead5;
-      padding: 8px 12px;
+      background: var(--clinic-light);
+      color: var(--clinic-primary);
+      border: 1px solid #b8e9e3;
+      padding: 6px 10px;
       border-radius: 999px;
-      font-weight: 700;
+      font-weight: 800;
       display: inline-block;
     }
+    .modal-content { border: 1px solid var(--clinic-border); border-radius: 20px; overflow: hidden; }
+    .modal-header-clinic { background: linear-gradient(135deg, var(--clinic-primary), var(--clinic-secondary)); color: white; }
+    .identity-card { background: #f7fcfc; border: 1px solid var(--clinic-border); border-radius: 14px; padding: 15px; }
+    .identity-pair { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-weight: 800; }
+    .identity-pair span { padding: 9px 12px; border-radius: 10px; background: white; border: 1px solid var(--clinic-border); }
+    .identity-pair i { color: var(--clinic-primary); }
+    @media (max-width: 850px) { .info-grid { grid-template-columns: 1fr; } .header-box h1 { font-size: 30px; } }
+    @media (max-width: 520px) { .wrapper { padding: 12px; margin: 12px auto; } .header-box { padding: 24px; }
+      .header-icon { display: none; } .info-list { grid-template-columns: 1fr; } }
   </style>
 </head>
 
@@ -71,60 +117,70 @@
 <div id="app" class="wrapper">
 
   <div class="header-box d-flex justify-content-between align-items-center flex-wrap gap-3">
-    <div>
-      <h1 class="fw-bold mb-2">SF8 Preview</h1>
-      <p class="mb-0">Review extracted learner data before approval.</p>
+    <div class="header-content d-flex align-items-center gap-3">
+      <div class="header-icon"><i class="bi bi-file-earmark-spreadsheet"></i></div>
+      <div>
+        <h1>SF8 Preview</h1>
+        <p>Review extracted learner data before approval.</p>
+      </div>
     </div>
-
-    <a href="nurse-sf8-uploads.php" class="btn btn-light">Back to Uploads</a>
+    <a href="nurse-sf8-uploads.php" class="btn-back header-actions"><i class="bi bi-arrow-left me-2"></i>Back to Uploads</a>
   </div>
 
   <div v-if="message" :class="['alert', messageType === 'success' ? 'alert-success' : 'alert-danger']">
     {{ message }}
   </div>
 
-  <div class="card p-4 mb-4" v-if="upload">
-    <h4 class="fw-bold">Upload Information</h4>
-    <p><strong>File:</strong> {{ upload.file_name }}</p>
-    <p><strong>Uploaded By:</strong> {{ upload.uploaded_by_email }}</p>
-    <p><strong>Status:</strong> {{ upload.status }}</p>
-    <p v-if="reportCode">
-      <strong>Report Type:</strong>
-      <span class="badge-purpose">{{ reportLabel }}</span>
-    </p>
-  </div>
-
-  <div class="card p-4 mb-4" v-if="hasHeaderData">
-    <h4 class="fw-bold">School Information</h4>
-    <div class="row">
-      <div class="col-md-4"><strong>School:</strong> {{ header.school_name || "" }}</div>
-      <div class="col-md-4"><strong>District:</strong> {{ header.district || "" }}</div>
-      <div class="col-md-4"><strong>Division:</strong> {{ header.division || "" }}</div>
-      <div class="col-md-4"><strong>Region:</strong> {{ header.region || "" }}</div>
-      <div class="col-md-4"><strong>Grade:</strong> {{ header.grade_level || "" }}</div>
-      <div class="col-md-4"><strong>Section:</strong> {{ header.section || "" }}</div>
-      <div class="col-md-4"><strong>School Year:</strong> {{ header.school_year || "" }}</div>
+  <div class="info-grid" v-if="upload || hasHeaderData">
+    <div class="card p-4" v-if="upload">
+      <h2 class="section-heading"><i class="bi bi-cloud-check"></i>Upload Information</h2>
+      <div class="info-list">
+        <div class="info-item"><span class="info-label">File name</span><span class="info-value">{{ upload.file_name }}</span></div>
+        <div class="info-item"><span class="info-label">Status</span><span class="badge-purpose">{{ upload.status }}</span></div>
+        <div class="info-item"><span class="info-label">Uploaded by</span><span class="info-value">{{ upload.uploaded_by_email }}</span></div>
+        <div class="info-item"><span class="info-label">Report type</span><span class="info-value">{{ reportLabel }}</span></div>
+      </div>
+    </div>
+    <div class="card p-4" v-if="hasHeaderData">
+      <h2 class="section-heading"><i class="bi bi-building"></i>School Information</h2>
+      <div class="info-list">
+        <div class="info-item"><span class="info-label">School</span><span class="info-value">{{ header.school_name || "—" }}</span></div>
+        <div class="info-item"><span class="info-label">School year</span><span class="info-value">{{ header.school_year || "—" }}</span></div>
+        <div class="info-item"><span class="info-label">District</span><span class="info-value">{{ header.district || "—" }}</span></div>
+        <div class="info-item"><span class="info-label">Division</span><span class="info-value">{{ header.division || "—" }}</span></div>
+        <div class="info-item"><span class="info-label">Region</span><span class="info-value">{{ header.region || "—" }}</span></div>
+        <div class="info-item"><span class="info-label">Grade / Section</span><span class="info-value">{{ header.grade_level || "—" }} / {{ header.section || "—" }}</span></div>
+      </div>
     </div>
   </div>
 
   <div class="card p-4">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-      <h4 class="fw-bold mb-0">Extracted Records: {{ records.length }}</h4>
+      <div>
+        <h2 class="section-heading mb-0"><i class="bi bi-list-check"></i>Extracted Records <span class="records-count">{{ records.length }}</span></h2>
+        <p class="records-subtitle">Check the file contents before saving them to the student records. For Student Information, height-for-age is recalculated from sex, age, and standing height using WHO tables.</p>
+      </div>
 
-      <div v-if="upload && upload.status === 'Pending'">
-        <button class="btn btn-green me-2" @click="approveUpload" :disabled="loading">
-          Approve and Save
+      <div v-if="upload && upload.status === 'Pending'" class="d-flex flex-wrap gap-2">
+        <button class="btn btn-green" @click="approveUpload()" :disabled="loading">
+          <i class="bi bi-check2-circle me-1"></i>{{ loading ? "Working..." : "Approve and Save" }}
         </button>
 
-        <button class="btn btn-danger" @click="openRejectModal" :disabled="loading">
-          Reject
+        <button class="btn btn-outline-danger btn-reject" @click="openRejectModal" :disabled="loading">
+          <i class="bi bi-x-circle me-1"></i>Reject
         </button>
       </div>
+    </div>
+    <div v-if="upload && upload.file_type === 'sf8_enc_v1'" class="alert alert-success py-2 small mb-3">
+      <i class="bi bi-shield-lock me-1"></i>Encrypted cloud file · Decrypted preview
+    </div>
+    <div v-if="reportCode && reportCode !== 'students_information'" class="alert alert-info py-2 small mb-3">
+      <i class="bi bi-person-plus me-1"></i>If this learner has no Student Information yet, approval creates a provisional learner profile and saves only this file's health records.
     </div>
 
     <div v-if="loading" class="alert alert-info">Loading, please wait...</div>
 
-    <div class="table-responsive" v-if="records.length > 0">
+    <div class="table-responsive records-table" v-if="records.length > 0">
       <table class="table table-bordered table-sm align-middle">
         <thead>
           <tr>
@@ -169,6 +225,71 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXISTING-DATA REVIEW MODAL -->
+  <div class="modal fade" id="conflictModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header modal-header-clinic">
+          <h5 class="modal-title fw-bold"><i class="bi bi-arrow-repeat me-2"></i>Review existing learner data</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3">Review each change for the same LRN and school year. Empty fields will still be filled automatically.</p>
+          <div v-if="hasExistingDuplicates" class="alert alert-danger">
+            Some learners already have multiple rows. Resolve those records in the Records Manager before this file can be approved.
+          </div>
+          <div v-for="(conflict, index) in conflicts" :key="index" class="border rounded p-3 mb-3">
+            <div class="fw-bold mb-2">{{ conflict.learner_name }} · LRN {{ conflict.lrn }} · {{ conflict.school_year }}</div>
+            <div v-if="conflict.existing_count > 1" class="alert alert-warning py-2">
+              {{ conflict.existing_count }} existing rows were found for this record.
+              <div v-for="row in conflict.existing_rows" :key="row.id" class="small mt-2">
+                Record #{{ row.id }}: {{ formatConflictRow(row) }}
+              </div>
+            </div>
+            <div class="table-responsive" v-if="conflict.changes.length">
+              <table class="table table-sm table-bordered align-middle mb-0">
+                <thead><tr><th>Field</th><th>Existing data</th><th></th><th>New SF8 data</th></tr></thead>
+                <tbody>
+                  <tr v-for="change in conflict.changes" :key="change.field">
+                    <td>{{ change.field.replace(/_/g, ' ') }}</td>
+                    <td>{{ formatValue(change.existing) }}</td>
+                    <td class="text-center fw-bold">→</td>
+                    <td>{{ formatValue(change.incoming) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-else class="small text-muted mb-0">This learner already has a record with the same populated values. Approving this file will not change those values.</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep existing data</button>
+          <button type="button" class="btn btn-warning fw-bold" @click="confirmOverride" :disabled="loading || hasExistingDuplicates || !conflictFingerprint">Override and Approve</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="identityModal" tabindex="-1" data-bs-backdrop="static" aria-labelledby="identityModalTitle">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header modal-header-clinic">
+          <h5 class="modal-title fw-bold" id="identityModalTitle"><i class="bi bi-person-exclamation me-2"></i>Check learner LRN</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p>The same learner name and school year appear with different LRNs. No records were saved. Compare the workbook with the existing record and correct the incorrect LRN before approval. ClinicDesk will not merge learners by name.</p>
+          <div v-for="(issue, index) in identityConflicts" :key="index" class="identity-card mb-3">
+            <div class="fw-bold mb-2">{{ issue.learner_name }} · {{ issue.school_year }}</div>
+            <div class="identity-pair"><span>Existing LRN: {{ issue.existing_lrn }}</span><i class="bi bi-arrow-right"></i><span>File LRN: {{ issue.incoming_lrn }}</span></div>
+            <div class="small text-muted mt-2">Found in {{ issue.source }}</div>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-green" data-bs-dismiss="modal">Review workbook</button></div>
       </div>
     </div>
   </div>
@@ -232,6 +353,7 @@
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
+<script src="assets/sf8-security.js"></script>
 <script>
 const { createApp } = Vue;
 
@@ -249,6 +371,12 @@ createApp({
       errorMessage: "",
       errorDetails: "",
       errorModal: null,
+      conflictModal: null,
+      identityModal: null,
+      identityConflicts: [],
+      conflicts: [],
+      hasExistingDuplicates: false,
+      conflictFingerprint: "",
 
       // Success + reject modals
       successMessage: "",
@@ -394,6 +522,10 @@ createApp({
     if (modalElement) {
       this.errorModal = new bootstrap.Modal(modalElement);
     }
+    const conflictEl = document.getElementById("conflictModal");
+    if (conflictEl) this.conflictModal = new bootstrap.Modal(conflictEl);
+    const identityEl = document.getElementById("identityModal");
+    if (identityEl) this.identityModal = new bootstrap.Modal(identityEl);
     const successEl = document.getElementById("successModal");
     if (successEl) {
       this.successModal = new bootstrap.Modal(successEl);
@@ -411,6 +543,12 @@ createApp({
   },
 
   methods: {
+    formatConflictRow(row) {
+      return Object.entries(row.values || {})
+        .filter(([, value]) => value !== null && value !== "")
+        .map(([key, value]) => key.replace(/_/g, " ") + ": " + value)
+        .join(" · ");
+    },
     formatValue(value) {
       if (value === null || value === undefined) return "—";
       if (typeof value === "string" && value.trim() === "") return "—";
@@ -422,7 +560,7 @@ createApp({
       this.message = "";
 
       try {
-        const response = await fetch("api/parse_sf8_from_upload.php?upload_id=" + this.uploadId);
+        const response = await clinicSf8Fetch("api/parse_sf8_from_upload.php?upload_id=" + this.uploadId);
         const text = await response.text();
         console.log("Preview raw response:", text);
 
@@ -453,15 +591,16 @@ createApp({
       this.loading = false;
     },
 
-    async approveUpload() {
+    async approveUpload(overrideExisting = false) {
       this.loading = true;
       try {
-        const response = await fetch("api/approve_sf8_upload.php", {
+        const response = await clinicSf8Fetch("api/approve_sf8_upload.php", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             upload_id: this.uploadId,
-            reviewed_by: "Clinic Nurse"
+            override_existing: overrideExisting,
+            conflict_fingerprint: overrideExisting ? this.conflictFingerprint : ""
           })
         });
 
@@ -485,6 +624,14 @@ createApp({
           } else {
             window.location.href = "nurse-sf8-uploads.php";
           }
+        } else if (Array.isArray(data.identity_conflicts) && data.identity_conflicts.length) {
+          this.identityConflicts = data.identity_conflicts;
+          if (this.identityModal) this.identityModal.show();
+        } else if (data.requires_override && Array.isArray(data.conflicts)) {
+          this.conflicts = data.conflicts;
+          this.hasExistingDuplicates = !!data.has_existing_duplicates;
+          this.conflictFingerprint = data.conflict_fingerprint || "";
+          if (this.conflictModal) this.conflictModal.show();
         } else {
           this.errorMessage = data.message || "Approval failed. Please check the file and try again.";
           this.errorDetails = data.details
@@ -499,6 +646,15 @@ createApp({
         if (this.errorModal) this.errorModal.show();
       }
       this.loading = false;
+    },
+
+    async confirmOverride() {
+      if (this.loading || this.hasExistingDuplicates || !this.conflictFingerprint) return;
+      const modalElement = document.getElementById("conflictModal");
+      const hidden = new Promise(resolve => modalElement.addEventListener("hidden.bs.modal", resolve, { once: true }));
+      this.conflictModal.hide();
+      await hidden;
+      await this.approveUpload(true);
     },
 
     openRejectModal() {
@@ -549,5 +705,6 @@ createApp({
   }
 }).mount("#app");
 </script>
+<script src="assets/table-pagination.js" defer></script>
 </body>
 </html>

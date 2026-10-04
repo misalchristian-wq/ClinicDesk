@@ -1,0 +1,2 @@
+# Preserve Bearer tokens for PHP when Apache runs through CGI/FastCGI.
+SetEnvIfNoCase Authorization "^(.+)$" HTTP_AUTHORIZATION=$1

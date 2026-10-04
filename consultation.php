@@ -85,7 +85,7 @@
   <div class="header-box d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
       <h1 class="fw-bold mb-2">🩺 Student Consultation</h1>
-      <p class="mb-0">Select a student, perform health assessment, and get automatic recommendations</p>
+      <p class="mb-0">Record reported symptoms, care given, and any follow-up.</p>
     </div>
     <div>
       <a href="nurse-dashboard.php" class="btn-back">← Back to Dashboard</a>
@@ -129,6 +129,13 @@
             <label class="form-check-label">{{ sym.label }}</label>
           </div>
         </div>
+        <div v-if="medicineSuggestions.length" class="recommendation-card">
+          <strong>Suggested medicine for nurse review</strong>
+          <div v-for="item in medicineSuggestions" :key="item.symptom" class="mt-2">
+            <strong>{{ item.symptom }}: {{ item.medicine }}</strong><br>{{ item.note }}
+          </div>
+          <small>Suggestions are not prescriptions or a record of care given.</small>
+        </div>
         <div class="mt-3">
           <label class="form-label">Additional Notes / Symptoms</label>
           <textarea class="form-control" rows="3" v-model="otherSymptoms" placeholder="Describe other symptoms not listed..."></textarea>
@@ -138,31 +145,33 @@
 
     <div class="col-md-7">
       <div class="card-box">
-        <h4 class="fw-bold">📝 Assessment & Recommendations</h4>
-        
-        <div class="recommendation-card" v-if="generatedRecommendation">
-          <h5 class="text-primary">💊 Recommendation</h5>
-          <p>{{ generatedRecommendation.recommendation }}</p>
-          <hr>
-          <h5>🍎 Meal Plan</h5>
-          <p>{{ generatedRecommendation.meal_plan }}</p>
-          <hr>
-          <h5>💊 Medicine / Supplement</h5>
-          <p>{{ generatedRecommendation.medicine }}</p>
-        </div>
-        
-        <div v-else class="text-center text-muted py-4">
-          <i class="bi bi-robot"></i> Select symptoms above to generate recommendations
-        </div>
-        
+        <h4 class="fw-bold">📝 Nurse Consultation Record</h4>
+        <p class="text-muted">Enter only observations and care that actually happened. Review any symptom-based medicine suggestions separately.</p>
         <div class="mt-3">
-          <label class="form-label">Follow-up Date (optional)</label>
-          <input type="date" class="form-control" v-model="followUpDate">
+          <label class="form-label" for="consultCareGiven">Care or action given</label>
+          <textarea id="consultCareGiven" class="form-control" rows="3" v-model="careGiven" placeholder="What did the nurse do during this visit?"></textarea>
+        </div>
+        <div class="mt-3">
+          <label class="form-label" for="consultFollowUp">Follow-up Date (optional)</label>
+          <input id="consultFollowUp" type="date" class="form-control" v-model="followUpDate">
+        </div>
+        <div class="mt-3">
+          <label class="form-label" for="consultNotes">Additional notes (optional)</label>
+          <textarea id="consultNotes" class="form-control" rows="2" v-model="consultationNotes"></textarea>
         </div>
         
         <button class="btn btn-green w-100 mt-4" @click="saveConsultation" :disabled="saving">
-          {{ saving ? 'Saving...' : '✅ Save Consultation & Generate Report' }}
+          {{ saving ? 'Saving...' : 'Save Consultation' }}
         </button>
+        <div v-if="consultations.length" class="mt-4">
+          <h5 class="fw-bold">Recent consultations</h5>
+          <div v-for="entry in consultations.slice(0,5)" :key="entry.consultation_id" class="recommendation-card mb-2">
+            <strong>{{ entry.recorded_at }} · {{ entry.recorded_by || 'Clinic Nurse' }}</strong>
+            <div>Reported: {{ entry.symptoms }}</div>
+            <div v-if="entry.care_given">Care given: {{ entry.care_given }}</div>
+            <div v-if="entry.follow_up_date">Follow-up: {{ entry.follow_up_date }}</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -172,6 +181,7 @@
   </div>
 </div>
 
+<script src="assets/consultation-suggestions.js"></script>
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 <script>
 const { createApp } = Vue;
@@ -193,11 +203,13 @@ createApp({
         has_dental_problem: false
       },
       otherSymptoms: '',
+      careGiven: '',
       followUpDate: '',
+      consultationNotes: '',
+      consultations: [],
       saving: false,
       message: '',
       messageType: 'success',
-      generatedRecommendation: null,
       symptomList: [
         { key: 'has_fatigue', label: 'Fatigue' },
         { key: 'has_bone_pain', label: 'Bone pain' },
@@ -211,15 +223,16 @@ createApp({
     };
   },
   mounted() {
+    if (localStorage.getItem('active_role') !== 'Clinic Nurse' || !localStorage.getItem('local_id_token')) {
+      location.replace('login.php'); return;
+    }
     this.loadStudents();
   },
-  watch: {
-    selectedSymptoms: {
-      handler() { this.generateRecommendationLocal(); },
-      deep: true
-    },
-    otherSymptoms() { this.generateRecommendationLocal(); },
-    selectedStudent() { this.generateRecommendationLocal(); }
+  computed: {
+    medicineSuggestions() {
+      return window.clinicConsultationSuggestions(
+        Object.keys(this.selectedSymptoms).filter(key => this.selectedSymptoms[key]));
+    }
   },
   methods: {
     getBmiBadge(cat) {
@@ -231,74 +244,35 @@ createApp({
     },
     async loadStudents() {
       try {
-        const res = await fetch('api/get_students_for_consult.php');
+        const res = await fetch('api/get_students_for_consult.php', {headers:{Authorization:'Bearer '+localStorage.getItem('local_id_token')}});
         const data = await res.json();
-        if (data.success) this.students = data.students;
-      } catch(e) { console.error(e); }
+        if (!res.ok || !data.success) throw new Error(data.message || 'Could not load students.');
+        this.students = data.students;
+        if (this.selectedStudentId) this.selectedStudent = this.students.find(s => String(s.record_id) === String(this.selectedStudentId)) || null;
+      } catch(e) { this.showMessage('error', e.message); }
     },
     async loadStudentData() {
       if (!this.selectedStudentId) {
         this.selectedStudent = null;
+        this.consultations = [];
         return;
       }
-      const student = this.students.find(s => s.record_id == this.selectedStudentId);
-      if (student) {
-        this.selectedStudent = student;
-        // Also load existing health assessment if any
-        try {
-          const res = await fetch(`api/get_health_assessment.php?record_id=${this.selectedStudentId}`);
-          const data = await res.json();
-          if (data.success && data.health_input) {
-            // Pre-fill symptoms if they exist
-            Object.keys(this.selectedSymptoms).forEach(key => {
-              if (data.health_input[key] === 'Yes' || data.health_input[key] === 1) {
-                this.selectedSymptoms[key] = true;
-              }
-            });
-            if (data.health_input.symptoms) this.otherSymptoms = data.health_input.symptoms;
-          }
-        } catch(e) { console.log('No existing assessment'); }
-      }
+      this.selectedStudent = this.students.find(s => String(s.record_id) === String(this.selectedStudentId)) || null;
+      Object.keys(this.selectedSymptoms).forEach(key => this.selectedSymptoms[key] = false);
+      this.otherSymptoms = '';
+      this.careGiven = '';
+      this.followUpDate = '';
+      this.consultationNotes = '';
+      await this.loadConsultations();
     },
-    generateRecommendationLocal() {
-      const bmi = this.selectedStudent?.bmi_category || 'Normal';
-      const symptomText = this.getSymptomText();
-      
-      let recommendation = '';
-      let medicine = '';
-      let mealPlan = '';
-      
-      if (bmi.includes('Underweight') || bmi.includes('Wasted')) {
-        recommendation = 'Student is underweight. Needs high-calorie, protein-rich diet.';
-        mealPlan = '3 main meals + 2 snacks: eggs, milk, meat, fish, nuts, legumes, rice.';
-        medicine = 'Multivitamins with iron (consult physician for dosage).';
-      } else if (bmi.includes('Overweight') || bmi.includes('Obese')) {
-        recommendation = 'Student is overweight/obese. Needs weight management.';
-        mealPlan = 'Low-calorie, high-fiber: vegetables, fruits, lean meat, whole grains. Avoid sugary drinks.';
-        medicine = 'No medication. Focus on diet and exercise.';
-      } else {
-        recommendation = 'BMI is normal. Maintain healthy lifestyle.';
-        mealPlan = 'Balanced diet with fruits, vegetables, protein, and carbohydrates.';
-        medicine = 'No medication needed.';
-      }
-      
-      if (symptomText.includes('fatigue') || symptomText.includes('pale')) {
-        recommendation += ' Possible anemia. Increase iron-rich foods.';
-        medicine = 'Iron supplements (Ferrous sulfate 200mg daily).';
-        mealPlan += ' Include red meat, liver, spinach, beans.';
-      }
-      if (symptomText.includes('bone pain') || symptomText.includes('night blindness')) {
-        recommendation += ' Possible Vitamin D or A deficiency.';
-        medicine = 'Vitamin D3 (800 IU daily) or Vitamin A supplement.';
-        mealPlan += ' Add carrots, squash, eggs, milk. Sun exposure.';
-      }
-      if (symptomText.includes('bleeding gums')) {
-        recommendation += ' Possible Vitamin C deficiency.';
-        medicine = 'Vitamin C supplement (500mg daily for 2 weeks).';
-        mealPlan += ' Increase citrus fruits: oranges, guava, bell peppers.';
-      }
-      
-      this.generatedRecommendation = { recommendation, medicine, meal_plan: mealPlan };
+    async loadConsultations() {
+      try {
+        const res = await fetch('api/get_consultations.php?record_id='+encodeURIComponent(this.selectedStudentId),
+          {headers:{Authorization:'Bearer '+localStorage.getItem('local_id_token')}});
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Could not load consultations.');
+        this.consultations = data.consultations || [];
+      } catch(e) { this.showMessage('error', e.message); }
     },
     getSymptomText() {
       let symptoms = [];
@@ -318,25 +292,29 @@ createApp({
       }
       this.saving = true;
       const symptomText = this.getSymptomText();
+      if (!symptomText.trim()) { this.showMessage('error', 'Record symptoms or a reason for visit.'); this.saving = false; return; }
       try {
         const res = await fetch('api/save_consultation.php', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization:'Bearer '+localStorage.getItem('local_id_token') },
           body: JSON.stringify({
             record_id: this.selectedStudentId,
             symptoms: symptomText,
-            bmi_category: this.selectedStudent.bmi_category || 'Normal'
+            care_given: this.careGiven,
+            follow_up_date: this.followUpDate,
+            notes: this.consultationNotes
           })
         });
         const data = await res.json();
-        if (data.success) {
+        if (res.ok && data.success) {
           this.showMessage('success', 'Consultation saved successfully!');
-          // Reload student to update consult count
-          this.loadStudents();
-          this.loadStudentData();
-          // Optionally reset symptoms after save
+          await this.loadStudents();
+          await this.loadConsultations();
           Object.keys(this.selectedSymptoms).forEach(k => this.selectedSymptoms[k] = false);
           this.otherSymptoms = '';
+          this.careGiven = '';
+          this.followUpDate = '';
+          this.consultationNotes = '';
         } else {
           this.showMessage('error', data.message || 'Save failed.');
         }

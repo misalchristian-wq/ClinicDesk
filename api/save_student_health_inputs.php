@@ -1,20 +1,30 @@
 <?php
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type");
-header("Access-Control-Allow-Methods: POST");
 
 ini_set("display_errors", 0);
 error_reporting(E_ALL);
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse']);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Use POST to save an assessment.']);
+    exit;
+}
 
 try {
     include __DIR__ . "/../db.php";
 
     $data = json_decode(file_get_contents("php://input"), true);
+    if (!is_array($data)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Enter valid assessment data.']);
+        exit;
+    }
 
-    $record_id = $data["record_id"] ?? "";
+    $record_id = filter_var($data["record_id"] ?? null, FILTER_VALIDATE_INT);
 
-    if ($record_id === "") {
+    if (!$record_id || $record_id < 1) {
         echo json_encode([
             "success" => false,
             "message" => "Record ID is required."
@@ -22,7 +32,36 @@ try {
         exit;
     }
 
+    foreach (["has_fatigue", "has_bone_pain", "has_bleeding_gums", "has_pale_skin", "has_night_blindness",
+              "has_muscle_weakness", "has_numbness_tingling", "has_memory_problems", "has_dry_eyes",
+              "has_shortness_of_breath", "has_fast_heart_rate", "has_brittle_nails", "has_weight_loss",
+              "has_reduced_wound_healing", "has_low_appetite"] as $requiredFlag) {
+        if (!array_key_exists($requiredFlag, $data) ||
+            !in_array($data[$requiredFlag], [true, false, 1, 0, 'Yes', 'No'], true)) {
+            http_response_code(422);
+            echo json_encode(['success' => false, 'message' => 'Review all symptom questions before saving.']);
+            exit;
+        }
+    }
+
     $diet_type = trim($data["diet_type"] ?? "");
+    $livingEnvironment = trim((string)($data['living_environment'] ?? ''));
+    $skinCondition = trim((string)($data['skin_condition'] ?? ''));
+    if ($diet_type !== '' && !in_array($diet_type, ['Vegetarian', 'Non-Vegetarian'], true)) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Select Vegetarian or Non-Vegetarian for the dataset diet field.']);
+        exit;
+    }
+    if ($livingEnvironment !== '' && !in_array($livingEnvironment, ['Rural', 'Urban'], true)) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Select Rural or Urban for living environment.']);
+        exit;
+    }
+    if ($skinCondition !== '' && !in_array($skinCondition, ['Normal', 'Dry Skin', 'Rough Skin', 'Pale/Yellow Skin'], true)) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Select a valid skin condition.']);
+        exit;
+    }
     $sun_exposure = trim($data["sun_exposure"] ?? "");
     $exercise_level = trim($data["exercise_level"] ?? "");
     $symptoms = trim($data["symptoms"] ?? "");
@@ -49,7 +88,7 @@ try {
 
     $immunization_updated = $data["immunization_updated"] ?? "Unknown";
     $has_known_allergy = $data["has_known_allergy"] ?? "No";
-    $allergy_details = trim($data["allergy_details"] ?? "");
+    $allergy_details = $has_known_allergy === 'Yes' ? trim($data["allergy_details"] ?? "") : "";
 
     $family_history_diabetes = $data["family_history_diabetes"] ?? "No";
     $family_history_heart_disease = $data["family_history_heart_disease"] ?? "No";
@@ -60,6 +99,15 @@ try {
     $needs_referral = $data["needs_referral"] ?? "No";
     $clinic_notes = trim($data["clinic_notes"] ?? "");
 
+    $modelFlags = [];
+    foreach (["has_muscle_weakness", "has_numbness_tingling", "has_memory_problems", "has_dry_eyes",
+              "has_shortness_of_breath", "has_fast_heart_rate", "has_brittle_nails", "has_weight_loss",
+              "has_reduced_wound_healing"] as $flag) {
+        $value = $data[$flag] ?? false;
+        $modelFlags[$flag] = ($value === true || $value === 1 || $value === 'Yes') ? 'Yes' : 'No';
+    }
+
+    $conn->begin_transaction();
     $checkStmt = $conn->prepare("SELECT input_id FROM student_health_inputs WHERE record_id = ? LIMIT 1");
     $checkStmt->bind_param("i", $record_id);
     $checkStmt->execute();
@@ -217,11 +265,27 @@ try {
     }
 
     if ($stmt->execute()) {
+        $extraStmt = $conn->prepare("UPDATE student_health_inputs SET
+            living_environment = ?, skin_condition = ?,
+            has_muscle_weakness = ?, has_numbness_tingling = ?, has_memory_problems = ?,
+            has_dry_eyes = ?, has_shortness_of_breath = ?, has_fast_heart_rate = ?,
+            has_brittle_nails = ?, has_weight_loss = ?, has_reduced_wound_healing = ?
+            WHERE record_id = ?");
+        $extraStmt->bind_param('sssssssssssi',
+            $livingEnvironment, $skinCondition, $modelFlags['has_muscle_weakness'],
+            $modelFlags['has_numbness_tingling'], $modelFlags['has_memory_problems'],
+            $modelFlags['has_dry_eyes'], $modelFlags['has_shortness_of_breath'],
+            $modelFlags['has_fast_heart_rate'], $modelFlags['has_brittle_nails'],
+            $modelFlags['has_weight_loss'], $modelFlags['has_reduced_wound_healing'], $record_id);
+        $extraStmt->execute();
+        $extraStmt->close();
+        $conn->commit();
         echo json_encode([
             "success" => true,
             "message" => "Health assessment inputs saved successfully."
         ]);
     } else {
+        $conn->rollback();
         echo json_encode([
             "success" => false,
             "message" => "Save failed: " . $stmt->error
@@ -232,11 +296,14 @@ try {
     $conn->close();
 
 } catch (Throwable $e) {
+    if (isset($conn) && $conn instanceof mysqli) {
+        try { $conn->rollback(); } catch (Throwable $ignored) {}
+    }
+    error_log('ClinicDesk health assessment save: ' . $e->getMessage());
+    http_response_code(500);
     echo json_encode([
         "success" => false,
-        "message" => "Server error: " . $e->getMessage(),
-        "file" => $e->getFile(),
-        "line" => $e->getLine()
+        "message" => "The assessment could not be saved. Check the database migration and try again."
     ]);
 }
 ?>

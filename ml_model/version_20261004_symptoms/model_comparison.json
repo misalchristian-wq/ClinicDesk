@@ -1,0 +1,9 @@
+[
+  {
+    "model": "Random Forest (symptom CSV)",
+    "accuracy": 0.328,
+    "precision": 0.2098,
+    "recall": 0.2238,
+    "f1_score": 0.1901
+  }
+]

@@ -176,7 +176,7 @@
         <p>{{ student.learner_name || 'Loading student...' }} &nbsp;·&nbsp; Nurse: {{ nurseName }}</p>
       </div>
     </div>
-    <a href="student-dashboard.php" class="btn-back" style="position:relative;z-index:2;">← Dashboard</a>
+    <a href="monitoring-hub.php" class="btn-back" style="position:relative;z-index:2;">← Monitoring</a>
   </div>
 
   <div class="canvas">
@@ -236,18 +236,19 @@
 
         <!-- Result -->
         <div v-if="prediction && !predicting">
-          <div class="pc-label">Predicted deficiency</div>
-          <div class="pc-value">{{ prediction.predicted_deficiency || '—' }}</div>
+          <div class="pc-label">Screening flag for nurse review</div>
+          <div class="pc-value">{{ screeningFlag }}</div>
 
-          <div class="pc-label">Risk level</div>
+          <div class="pc-label">Screening priority</div>
           <div class="risk-pill" :class="riskClass" style="margin-bottom:12px;">
             <i class="bi" :class="riskIcon"></i>
             {{ prediction.predicted_risk_level || '—' }}
           </div>
 
-          <div class="pc-label">Confidence</div>
+          <div class="pc-label">Model score</div>
           <div class="conf-bar-wrap"><div class="conf-bar" :style="{width: confPct + '%'}"></div></div>
           <div style="font-size:12px;color:var(--mut);margin-bottom:12px;">{{ confPct }}%</div>
+          <p style="font-size:11.5px;color:#9a3412;margin:0 0 12px;">Experimental symptom screening only: the source holdout had 21.62% accuracy among 37 school-age rows. Review the learner independently before any care decision.</p>
 
           <div v-if="prediction.recommendation_text">
             <div class="pc-label">Recommendation</div>
@@ -272,11 +273,13 @@
 
         <!-- Run button -->
         <div style="margin-top:14px;">
-          <button class="btn-predict" @click="runPrediction" :disabled="predicting || !assessmentSaved">
+          <button class="btn-predict" @click="runPrediction" :disabled="predicting || !assessmentSaved || predictionMissing.length">
             <span v-if="predicting"><span class="predict-spinner"></span>Running...</span>
             <span v-else><i class="bi bi-stars me-1"></i>{{ prediction ? 'Re-run Prediction' : 'Run ML Prediction' }}</span>
           </button>
           <p v-if="!assessmentSaved" style="font-size:11.5px;color:var(--mut);text-align:center;margin-top:6px;">Save assessment first to enable prediction</p>
+          <p v-else-if="predictionMissing.length" style="font-size:11.5px;color:#9a3412;text-align:center;margin-top:6px;">Still needed: {{ predictionMissing.join(', ') }}.</p>
+          <p style="font-size:11.5px;text-align:center;margin-top:8px;"><a href="nurse-prediction-settings.php" style="color:var(--p);font-weight:700;">Check prediction service</a></p>
         </div>
       </div>
 
@@ -291,28 +294,37 @@
           <div class="sec-icon" style="background:linear-gradient(135deg,#0ea5e9,#38bdf8);">💊</div>
           <div>
             <h3>Quick Consultation</h3>
-            <p>Select illnesses for instant medication guidance, then save the record.</p>
+            <p>Record the learner's report and the care actually given.</p>
           </div>
         </div>
 
-        <label class="form-label">Common Illnesses</label>
+        <label class="form-label">Reported symptoms</label>
         <div class="ill-grid">
-          <label class="ill-chip" :class="{active: consultForm.illnesses[ill.key]}" v-for="ill in commonIllnesses" :key="ill.key">
-            <input type="checkbox" v-model="consultForm.illnesses[ill.key]">
+          <label class="ill-chip" :class="{active: consultForm.symptoms[ill.key]}" v-for="ill in consultationSymptoms" :key="ill.key">
+            <input type="checkbox" v-model="consultForm.symptoms[ill.key]">
             <span>{{ ill.label }}</span>
           </label>
         </div>
 
-        <div style="margin-top:14px;">
-          <label class="form-label">Additional notes / other symptoms</label>
-          <textarea class="form-control" rows="2" v-model="consultForm.notes" placeholder="Describe other symptoms..."></textarea>
+        <div v-if="consultationSuggestions.length" class="rec-box" style="margin-top:14px;">
+          <strong>Suggested medicine for nurse review</strong>
+          <div v-for="item in consultationSuggestions" :key="item.symptom" style="margin-top:8px;">
+            <strong>{{ item.symptom }}: {{ item.medicine }}</strong><br><span>{{ item.note }}</span>
+          </div>
+          <small>These suggestions are not prescriptions and are not recorded as care given. Review the learner before entering actual care below.</small>
         </div>
 
-        <div class="med-card" v-if="medicationRecommendation.length">
-          <h5><i class="bi bi-capsule me-1"></i>Medication Recommendation</h5>
-          <div class="med-item" v-for="m in medicationRecommendation" :key="m.label">
-            <strong>{{ m.label }}:</strong> {{ m.med }}
-          </div>
+        <div style="margin-top:14px;">
+          <label class="form-label">Other symptoms or reason for visit</label>
+          <textarea class="form-control" rows="2" v-model="consultForm.otherSymptoms" placeholder="Describe what the learner reported..."></textarea>
+        </div>
+        <div style="margin-top:14px;">
+          <label class="form-label" for="quickConsultCare">Care or action given</label>
+          <textarea id="quickConsultCare" class="form-control" rows="2" v-model="consultForm.careGiven" placeholder="Enter only actions the nurse actually performed"></textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:14px;">
+          <div><label class="form-label" for="quickConsultFollowUp">Follow-up date (optional)</label><input id="quickConsultFollowUp" class="form-control" type="date" v-model="consultForm.followUpDate"></div>
+          <div><label class="form-label" for="quickConsultNotes">Additional notes (optional)</label><textarea id="quickConsultNotes" class="form-control" rows="2" v-model="consultForm.notes"></textarea></div>
         </div>
 
         <div style="margin-top:14px;display:flex;justify-content:flex-end;">
@@ -321,28 +333,49 @@
             <span v-else><i class="bi bi-save me-1"></i>Save Consultation</span>
           </button>
         </div>
+        <div v-if="consultations.length" class="mt-4">
+          <h4 style="font-size:15px;font-weight:800;">Recent consultations</h4>
+          <div v-for="entry in consultations.slice(0,3)" :key="entry.consultation_id" class="med-card mb-2">
+            <strong>{{ entry.recorded_at }} · {{ entry.recorded_by || 'Clinic Nurse' }}</strong>
+            <div>Reported: {{ entry.symptoms }}</div>
+            <div v-if="entry.care_given">Care given: {{ entry.care_given }}</div>
+            <div v-if="entry.follow_up_date">Follow-up: {{ entry.follow_up_date }}</div>
+          </div>
+        </div>
       </div>
 
       <!-- ── Lifestyle & General Health ── -->
       <div class="card">
         <div class="sec-head">
           <div class="sec-icon">🥗</div>
-          <div><h3>Lifestyle & General Health</h3><p>These fields feed directly into the ML prediction.</p></div>
+          <div><h3>Lifestyle & General Health</h3><p>Complete the dataset fields for symptom-based screening.</p></div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
           <div>
             <label class="form-label">Diet type</label>
             <select class="form-select" v-model="form.diet_type">
               <option value="">Select</option>
-              <option>Balanced</option><option>Vegetarian</option>
-              <option>High protein</option><option>Low calorie</option><option>Other</option>
+              <option>Vegetarian</option><option>Non-Vegetarian</option>
             </select>
           </div>
           <div>
-            <label class="form-label">Sun exposure</label>
+            <label class="form-label">Living environment</label>
+            <select class="form-select" v-model="form.living_environment">
+              <option value="">Select</option><option>Rural</option><option>Urban</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Skin condition</label>
+            <select class="form-select" v-model="form.skin_condition">
+              <option value="">Select</option><option>Normal</option><option>Dry Skin</option>
+              <option>Rough Skin</option><option>Pale/Yellow Skin</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Low Sun Exposure</label>
             <select class="form-select" v-model="form.sun_exposure">
               <option value="">Select</option>
-              <option>Low</option><option>Moderate</option><option>High</option>
+              <option value="Low">Yes, low sun exposure</option><option value="Moderate">No, moderate sun exposure</option><option value="High">No, high sun exposure</option>
             </select>
           </div>
           <div>
@@ -365,23 +398,22 @@
               <option>No</option><option>Yes</option>
             </select>
           </div>
-          <div v-if="form.has_known_allergy === 'Yes'">
+          <div>
             <label class="form-label">Allergy details</label>
-            <input type="text" class="form-control" v-model="form.allergy_details" placeholder="e.g. peanuts, pollen">
+            <input type="text" class="form-control" v-model="form.allergy_details" :disabled="form.has_known_allergy !== 'Yes'" :placeholder="form.has_known_allergy === 'Yes' ? 'e.g. peanuts, pollen' : 'Not applicable when No'">
           </div>
         </div>
       </div>
 
       <!-- ── Observed Symptoms ── -->
       <div class="card">
-        <div class="toggle-head sec-head" @click="showSymptoms = !showSymptoms" style="margin-bottom:0;cursor:pointer;">
+        <div class="sec-head" style="margin-bottom:0;">
           <div style="display:flex;align-items:center;gap:10px;">
             <div class="sec-icon">📋</div>
-            <div><h3>Observed Symptoms</h3><p>{{ activeSymptomCount }} symptom{{ activeSymptomCount !== 1 ? 's' : '' }} checked &nbsp;·&nbsp; Used in ML model</p></div>
+            <div><h3>Observed Symptoms</h3><p>{{ activeSymptomCount }} symptom{{ activeSymptomCount !== 1 ? 's' : '' }} checked. Model symptoms and other clinical observations are shown together.</p></div>
           </div>
-          <i class="bi bi-chevron-down chevron" :class="{open: showSymptoms}"></i>
         </div>
-        <div v-show="showSymptoms" class="sym-grid" style="margin-top:16px;">
+        <div class="sym-grid" style="margin-top:16px;">
           <label class="sym-chip" :class="{active: form[sym.key]}" v-for="sym in symptomFields" :key="sym.key">
             <input type="checkbox" v-model="form[sym.key]">
             <span>{{ sym.label }}</span>
@@ -391,14 +423,13 @@
 
       <!-- ── Family History ── -->
       <div class="card">
-        <div class="toggle-head sec-head" @click="showFamily = !showFamily" style="margin-bottom:0;cursor:pointer;">
+        <div class="sec-head" style="margin-bottom:0;">
           <div style="display:flex;align-items:center;gap:10px;">
             <div class="sec-icon" style="background:linear-gradient(135deg,#f59e0b,#fbbf24);">👨‍👩‍👧</div>
             <div><h3>Family History</h3><p>Hereditary conditions</p></div>
           </div>
-          <i class="bi bi-chevron-down chevron" :class="{open: showFamily}"></i>
         </div>
-        <div v-show="showFamily" class="fam-grid" style="margin-top:16px;">
+        <div class="fam-grid" style="margin-top:16px;">
           <label class="fam-chip" :class="{active: form.family_history_diabetes}">
             <input type="checkbox" v-model="form.family_history_diabetes"><span>Diabetes</span>
           </label>
@@ -453,6 +484,7 @@
   </div><!-- /canvas -->
 </div><!-- /app -->
 
+<script src="assets/consultation-suggestions.js"></script>
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 <script>
 const { createApp } = Vue;
@@ -470,18 +502,14 @@ createApp({
       prediction: null,
       toasts: [],
       toastId: 0,
-      showSymptoms: true,
-      showFamily: false,
 
-      commonIllnesses: [
-        { key: 'fever',       label: 'Fever',       med: 'Paracetamol 500mg every 6h as needed. Monitor temperature.' },
-        { key: 'headache',    label: 'Headache',    med: 'Paracetamol or Ibuprofen 200–400mg. Rest in a quiet room.' },
-        { key: 'cough',       label: 'Cough',       med: 'Carbocisteine (productive) or Dextromethorphan (dry). Warm honey-lemon drink.' },
-        { key: 'colds',       label: 'Colds',       med: 'Antihistamine (Loratadine or Cetirizine). Increase fluid intake. Rest.' },
-        { key: 'sore_throat', label: 'Sore Throat', med: 'Warm salt-water gargle. Lozenges. Paracetamol for pain.' },
-        { key: 'stomachache', label: 'Stomachache', med: 'Antacid (Kremil-S). Avoid spicy food. Consult if severe.' },
+      consultationSymptoms: [
+        { key: 'fever', label: 'Fever' }, { key: 'headache', label: 'Headache' },
+        { key: 'cough', label: 'Cough' }, { key: 'colds', label: 'Colds' },
+        { key: 'sore_throat', label: 'Sore throat' }, { key: 'stomachache', label: 'Stomachache' },
       ],
-      consultForm: { illnesses: { fever:false, headache:false, cough:false, colds:false, sore_throat:false, stomachache:false }, notes: '' },
+      consultForm: { symptoms: { fever:false, headache:false, cough:false, colds:false, sore_throat:false, stomachache:false }, otherSymptoms:'', careGiven:'', followUpDate:'', notes:'' },
+      consultations: [],
 
       symptomFields: [
         { key:'has_fatigue',           label:'Fatigue' },
@@ -489,7 +517,16 @@ createApp({
         { key:'has_bleeding_gums',     label:'Bleeding gums' },
         { key:'has_pale_skin',         label:'Pale skin' },
         { key:'has_night_blindness',   label:'Night blindness' },
-        { key:'has_low_appetite',      label:'Low appetite' },
+        { key:'has_dry_eyes',          label:'Dry eyes' },
+        { key:'has_shortness_of_breath',label:'Shortness of breath' },
+        { key:'has_fast_heart_rate',   label:'Fast heart rate' },
+        { key:'has_brittle_nails',     label:'Brittle nails' },
+        { key:'has_weight_loss',       label:'Weight loss' },
+        { key:'has_reduced_wound_healing', label:'Reduced wound healing capacity' },
+        { key:'has_muscle_weakness',    label:'Muscle weakness' },
+        { key:'has_numbness_tingling',  label:'Tingling sensation' },
+        { key:'has_memory_problems',    label:'Reduced memory capacity' },
+        { key:'has_low_appetite',      label:'Loss of appetite' },
         { key:'has_irregular_meals',   label:'Irregular meals' },
         { key:'has_weight_changes',    label:'Unexplained weight changes' },
         { key:'has_headache',          label:'Frequent headaches' },
@@ -504,9 +541,12 @@ createApp({
       ],
 
       form: {
-        diet_type:'', sun_exposure:'', exercise_level:'',
+        diet_type:'', living_environment:'', skin_condition:'', sun_exposure:'', exercise_level:'',
         has_fatigue:false, has_bone_pain:false, has_bleeding_gums:false, has_pale_skin:false,
         has_night_blindness:false, has_low_appetite:false, has_irregular_meals:false, has_weight_changes:false,
+        has_muscle_weakness:false, has_numbness_tingling:false, has_memory_problems:false,
+        has_dry_eyes:false, has_shortness_of_breath:false, has_fast_heart_rate:false,
+        has_brittle_nails:false, has_weight_loss:false, has_reduced_wound_healing:false,
         has_headache:false, has_poor_concentration:false, has_vision_problem:false, has_hearing_problem:false,
         has_dental_problem:false, has_skin_problem:false, has_breathing_problem:false,
         has_recent_illness:false, has_current_medication:false,
@@ -518,6 +558,10 @@ createApp({
   },
 
   computed: {
+    consultationSuggestions() {
+      return window.clinicConsultationSuggestions(
+        this.consultationSymptoms.filter(item => this.consultForm.symptoms[item.key]).map(item => item.key));
+    },
     initials() {
       if (!this.student.learner_name) return '?';
       return this.student.learner_name.split(' ').filter(Boolean).slice(0,2).map(p=>p[0].toUpperCase()).join('');
@@ -535,9 +579,6 @@ createApp({
     activeSymptomCount() {
       return this.symptomFields.filter(s => this.form[s.key]).length;
     },
-    medicationRecommendation() {
-      return this.commonIllnesses.filter(i => this.consultForm.illnesses[i.key]);
-    },
     riskClass() {
       const r = (this.prediction?.predicted_risk_level || '').toLowerCase();
       return r === 'high' ? 'risk-high' : r === 'moderate' ? 'risk-moderate' : 'risk-low';
@@ -552,6 +593,39 @@ createApp({
     },
     foodList() {
       return (this.prediction?.recommended_foods || '').split(',').map(f=>f.trim()).filter(Boolean);
+    },
+    screeningFlag() {
+      const labels = {
+        'Iron': 'Possible iron-related concern',
+        'Vitamin A': 'Possible vitamin A-related concern',
+        'Vitamin B12': 'Possible vitamin B12-related concern',
+        'Vitamin C': 'Possible vitamin C-related concern',
+        'Vitamin D': 'Possible vitamin D-related concern',
+        'Zinc': 'Possible zinc-related concern',
+        'No Deficiency': 'No concern flagged by this model',
+        'Iron Deficiency': 'Possible iron-related concern from earlier model',
+        'Vitamin D Deficiency': 'Possible vitamin D-related concern from earlier model',
+        'Severe Malnutrition': 'Nutrition concern from earlier model',
+        'Normal': 'No concern flagged by earlier model'
+      };
+      return labels[this.prediction?.predicted_deficiency] || 'For nurse review';
+    },
+    predictionMissing() {
+      const missing = [];
+      if (!Number(this.student.age) || Number(this.student.age) < 5 || Number(this.student.age) > 69) missing.push('age (5-69)');
+      if (!['Male','Female'].includes(this.student.sex)) missing.push('sex');
+      if (!['Vegetarian','Non-Vegetarian'].includes(this.form.diet_type)) missing.push('diet type');
+      if (!['Rural','Urban'].includes(this.form.living_environment)) missing.push('living environment');
+      if (!['Normal','Dry Skin','Rough Skin','Pale/Yellow Skin'].includes(this.form.skin_condition)) missing.push('skin condition');
+      if (!['Low','Moderate','High'].includes(this.form.sun_exposure)) missing.push('sun exposure');
+      return missing;
+    }
+  },
+
+  watch: {
+    form: {
+      deep: true,
+      handler() { this.assessmentSaved = false; }
     }
   },
 
@@ -568,9 +642,13 @@ createApp({
     await this.loadStudentProfile();
     await this.loadHealthAssessment();
     await this.loadLatestPrediction();
+    await this.loadConsultations();
   },
 
   methods: {
+    authHeaders(extra = {}) {
+      return { ...extra, Authorization: `Bearer ${localStorage.getItem('local_id_token') || ''}` };
+    },
     toast(type, msg, duration = 4000) {
       const id = ++this.toastId;
       this.toasts.push({ id, type, msg });
@@ -588,7 +666,7 @@ createApp({
 
     async loadHealthAssessment() {
       try {
-        const res = await fetch(`api/get_health_assessment.php?record_id=${this.recordId}`);
+        const res = await fetch(`api/get_health_assessment.php?record_id=${this.recordId}`, {headers: this.authHeaders()});
         const d = await res.json();
         if (d.success && d.health_input) {
           Object.keys(this.form).forEach(key => {
@@ -599,6 +677,11 @@ createApp({
                 : (val !== null ? val : '');
             }
           });
+          if (this.form.diet_type && !['Vegetarian','Non-Vegetarian'].includes(this.form.diet_type)) {
+            this.form.diet_type = '';
+            this.toast('error', 'The earlier diet category is not part of this dataset. Select Vegetarian or Non-Vegetarian before saving.');
+          }
+          await this.$nextTick();
           this.assessmentSaved = true;
         }
       } catch(e) { console.warn('No existing assessment', e); }
@@ -606,7 +689,7 @@ createApp({
 
     async loadLatestPrediction() {
       try {
-        const res = await fetch(`api/get_student_prediction.php?record_id=${this.recordId}`);
+        const res = await fetch(`api/get_student_prediction.php?record_id=${this.recordId}`, {headers:this.authHeaders()});
         const d = await res.json();
         if (d.success && d.prediction) this.prediction = d.prediction;
       } catch(e) { console.warn('No prior prediction', e); }
@@ -620,7 +703,7 @@ createApp({
         .forEach(k => { payload[k] = payload[k] ? 'Yes' : 'No'; });
       try {
         const res = await fetch('api/save_student_health_inputs.php', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+          method:'POST', headers:this.authHeaders({'Content-Type':'application/json'}), body:JSON.stringify(payload)
         });
         const d = await res.json();
         if (d.success) {
@@ -634,28 +717,33 @@ createApp({
     },
 
     async saveConsultation() {
-      const selected = this.commonIllnesses.filter(i => this.consultForm.illnesses[i.key]);
-      if (!selected.length && !this.consultForm.notes.trim()) {
-        this.toast('error', 'Select at least one illness or add notes.');
+      const selected = this.consultationSymptoms.filter(i => this.consultForm.symptoms[i.key]);
+      const symptoms = [...selected.map(i => i.label), this.consultForm.otherSymptoms.trim()].filter(Boolean).join(', ');
+      if (!symptoms) {
+        this.toast('error', 'Record the symptoms or reason for visit.');
         return;
       }
       this.consultSaving = true;
       try {
         const res = await fetch('api/save_consultation.php', {
-          method:'POST', headers:{'Content-Type':'application/json'},
+          method:'POST', headers:this.authHeaders({'Content-Type':'application/json'}),
           body: JSON.stringify({
             record_id: parseInt(this.recordId),
-            common_illnesses: selected.map(i=>i.label).join(', '),
-            symptoms: this.consultForm.notes,
-            medication: selected.map(i=>`${i.label}: ${i.med}`).join('\n'),
+            symptoms,
+            care_given: this.consultForm.careGiven,
+            follow_up_date: this.consultForm.followUpDate,
             notes: this.consultForm.notes
           })
         });
         const d = await res.json();
         if (d.success) {
           this.toast('success', '✅ Consultation saved.');
-          Object.keys(this.consultForm.illnesses).forEach(k => this.consultForm.illnesses[k] = false);
+          Object.keys(this.consultForm.symptoms).forEach(k => this.consultForm.symptoms[k] = false);
+          this.consultForm.otherSymptoms = '';
+          this.consultForm.careGiven = '';
+          this.consultForm.followUpDate = '';
           this.consultForm.notes = '';
+          await this.loadConsultations();
         } else {
           this.toast('error', d.message || 'Save failed.');
         }
@@ -663,21 +751,30 @@ createApp({
       this.consultSaving = false;
     },
 
+    async loadConsultations() {
+      try {
+        const res = await fetch(`api/get_consultations.php?record_id=${encodeURIComponent(this.recordId)}`, {headers:this.authHeaders()});
+        const data = await res.json();
+        if (data.success) this.consultations = data.consultations || [];
+      } catch(e) { this.toast('error', 'Consultation history could not be loaded.'); }
+    },
+
     async runPrediction() {
       if (!this.assessmentSaved) { this.toast('error', 'Save the health assessment first.'); return; }
+      if (this.predictionMissing.length) { this.toast('error', 'Complete the dataset screening inputs before predicting.'); return; }
       this.predicting = true;
       this.prediction = null;
       try {
         const res = await fetch('api/generate_student_prediction.php', {
-          method:'POST', headers:{'Content-Type':'application/json'},
+          method:'POST', headers:this.authHeaders({'Content-Type':'application/json'}),
           body: JSON.stringify({ record_id: this.recordId })
         });
         const d = await res.json();
         if (d.success) {
           this.prediction = d.prediction;
-          this.toast('success', `🤖 Prediction complete — ${d.prediction.predicted_deficiency}`);
+          this.toast('success', 'Screening result saved for nurse review.');
         } else {
-          this.toast('error', d.message || 'Prediction failed. Is the Flask ML server running on port 5001?');
+          this.toast('error', d.message || 'Prediction failed. Check Prediction Settings.');
         }
       } catch(e) { this.toast('error', 'Network error: ' + e.message); }
       this.predicting = false;

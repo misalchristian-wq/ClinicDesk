@@ -1,20 +1,28 @@
 <?php
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Headers: Content-Type");
+header("Cache-Control: no-store");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Access-Control-Allow-Methods: POST");
 
 ini_set("display_errors", 0);
 error_reporting(E_ALL);
 
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse']);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Use POST to approve an SF8 upload.']);
+    exit;
+}
+
 try {
+    require_once __DIR__ . '/sf8_workbook.php';
     include __DIR__ . "/../db.php";
-    include __DIR__ . "/sf8_parser.php";
-    include __DIR__ . "/deworming_wifa_parser.php";
-    include __DIR__ . "/okd_lhas_parser.php";
-    include __DIR__ . "/immunization_parser.php";
-    include __DIR__ . "/tobacco_parser.php";
-    include __DIR__ . "/arh_parser.php";
+    require_once __DIR__ . '/student_sections.php';
+    require_once __DIR__ . '/sf8_conflicts.php';
+    require_once __DIR__ . '/sf8_approval_validation.php';
+    require_once __DIR__ . '/who_classifier.php';
 
     // ------------------------------------------------------------------
     // Helper: read the "School Year" and "Grade" values from row 7 of the
@@ -125,7 +133,7 @@ try {
     $data = json_decode(file_get_contents("php://input"), true);
 
     $upload_id = intval($data["upload_id"] ?? 0);
-    $reviewed_by = trim($data["reviewed_by"] ?? "Clinic Nurse");
+    $reviewed_by = getCurrentUser()["full_name"];
 
     if ($upload_id <= 0) {
         echo json_encode(["success" => false, "message" => "Upload ID is required."]);
@@ -156,50 +164,55 @@ try {
         exit;
     }
 
-    $tempDir = __DIR__ . "/../temp_uploads";
-    if (!is_dir($tempDir)) {
-        mkdir($tempDir, 0777, true);
+    $tempFile = sf8DownloadForParsing($upload);
+
+    $fileMeta = sf8ReadUploadMetadata($tempFile);
+    if ($fileMeta['report_code'] !== $report_code) {
+        throw new Sf8Exception('The stored SF8 file type does not match its detected columns. Re-upload the correct file.');
     }
-
-    $tempFile = $tempDir . "/approve_sf8_" . $upload_id . "_" . time() . ".xlsx";
-
-    $ch = curl_init($cloudinary_url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-
-    $fileData = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlError = curl_error($ch);
-    curl_close($ch);
-
-    if ($fileData === false || $httpCode < 200 || $httpCode >= 300) {
-        echo json_encode([
-            "success" => false,
-            "message" => "Unable to download Excel file from Cloudinary.",
-            "http_code" => $httpCode,
-            "curl_error" => $curlError
-        ]);
+    $fileSchoolYear = $fileMeta['school_year'];
+    $parsedWorkbook = sf8ParseWorkbook($tempFile, $report_code);
+    $fileGradeLevel = trim((string)($parsedWorkbook['header']['grade_level'] ?? ''));
+    if ($fileGradeLevel === '') $fileGradeLevel = readSchoolYearAndGrade($tempFile)['grade_level'];
+    $preflight = clinicSf8ApprovalPreflight($conn, $parsedWorkbook['records'], $report_code, $fileSchoolYear);
+    if ($preflight['errors']) {
+        @unlink($tempFile);
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'This SF8 file cannot be approved until its learner rows are corrected.',
+            'details' => implode(' ', array_slice($preflight['errors'], 0, 10)),
+            'error_count' => count($preflight['errors'])]);
+        exit;
+    }
+    if ($preflight['identity_conflicts']) {
+        @unlink($tempFile);
+        http_response_code(409);
+        echo json_encode(['success' => false, 'identity_conflicts' => $preflight['identity_conflicts'],
+            'message' => 'A learner name in this school year is associated with a different LRN. Verify the workbook before approval.']);
         exit;
     }
 
-    file_put_contents($tempFile, $fileData);
-
-    if (!file_exists($tempFile) || filesize($tempFile) === 0) {
-        echo json_encode(["success" => false, "message" => "Downloaded Excel file is missing or empty."]);
+    $overrideExisting = !empty($data['override_existing']);
+    $conflicts = clinicSf8ReviewConflicts($conn, $tempFile, $report_code, $fileSchoolYear);
+    $hasExistingDuplicates = (bool)array_filter($conflicts, static fn($item) => $item['existing_count'] > 1);
+    $conflictFingerprint = hash('sha256', json_encode($conflicts));
+    if ($conflicts && ($hasExistingDuplicates || !$overrideExisting || !hash_equals($conflictFingerprint, (string)($data['conflict_fingerprint'] ?? '')))) {
+        if (file_exists($tempFile)) unlink($tempFile);
+        http_response_code(409);
+        echo json_encode(['success' => false, 'requires_override' => true,
+            'message' => $hasExistingDuplicates
+                ? 'Multiple existing rows were found for one learner. Resolve those rows before approving this file.'
+                : 'There is existing data for this school year. Review the changes before approval.',
+            'has_existing_duplicates' => $hasExistingDuplicates,
+            'conflicts' => $conflicts, 'conflict_fingerprint' => $conflictFingerprint]);
         exit;
     }
-
-    // Read the file-level school year + grade from row 7 (used by ARH/tobacco).
-    $fileMeta = readSchoolYearAndGrade($tempFile);
-    $fileSchoolYear = $fileMeta["school_year"];
-    $fileGradeLevel = $fileMeta["grade_level"];
 
     $conn->begin_transaction();
 
     $saved = 0;
     $skipped = 0;
+    $provisionalCreated = 0;
+    $provisionalCompleted = 0;
 
     // ------------------------------------------------------------------
     // 1. DEWORMING & WIFA
@@ -227,28 +240,6 @@ try {
             exit;
         }
 
-        $existingLrns = [];
-        if (!empty($lrnInFile)) {
-            $placeholders = implode(',', array_fill(0, count($lrnInFile), '?'));
-            $checkStmt = $conn->prepare("SELECT lrn FROM deworming_wifa_records WHERE lrn IN ($placeholders)");
-            $types = str_repeat("s", count($lrnInFile));
-            $checkStmt->bind_param($types, ...$lrnInFile);
-            $checkStmt->execute();
-            $res = $checkStmt->get_result();
-            while ($row = $res->fetch_assoc()) $existingLrns[] = $row["lrn"];
-            $checkStmt->close();
-        }
-        if (!empty($existingLrns)) {
-            $conn->rollback();
-            if (file_exists($tempFile)) unlink($tempFile);
-            echo json_encode([
-                "success" => false,
-                "message" => "LRNs already exist in Deworming records.",
-                "details" => implode(", ", $existingLrns)
-            ]);
-            exit;
-        }
-
         $deleteStmt = $conn->prepare("DELETE FROM deworming_wifa_records WHERE upload_id = ?");
         $deleteStmt->bind_param("i", $upload_id);
         $deleteStmt->execute();
@@ -271,16 +262,21 @@ try {
                 continue;
             }
 
-            $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
-            $findStmt->bind_param("s", $lrn);
-            $findStmt->execute();
-            $match = $findStmt->get_result()->fetch_assoc();
-            $findStmt->close();
-            if ($match) $studentRecordId = intval($match["record_id"]);
+            $learner = clinicEnsureLearnerForCategory($conn, ['lrn' => $lrn, 'school_year' => $fileSchoolYear,
+                'learner_name' => $learnerName, 'sex' => $sex, 'birthdate' => $birthdate,
+                'age' => $age, 'grade_level' => $fileGradeLevel]);
+            if ($learner['created']) $provisionalCreated++;
+            $studentRecordId = $learner['record_id'];
+            $recSchoolYear = $fileSchoolYear;
+            $recGradeLevel = $learner['grade_level'] ?: $fileGradeLevel;
 
-            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
-            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+            if (clinicFillExistingSection($conn, 'deworming_wifa', [
+                'student_record_id' => $studentRecordId, 'lrn' => $lrn, 'learner_name' => $learnerName,
+                'sex' => $sex, 'birthdate' => $birthdate, 'age' => $age,
+                'school_year' => $recSchoolYear, 'grade_level' => $recGradeLevel,
+                'dewormed_sbfp' => $dewormedSbfp, 'dewormed_other' => $dewormedOther,
+                'wifa' => $wifa, 'wifa_date' => $wifaDate, 'remarks' => $remarks,
+            ], $upload_id, $overrideExisting)) { $saved++; continue; }
 
             $insertStmt = $conn->prepare("
                 INSERT INTO deworming_wifa_records (
@@ -298,7 +294,7 @@ try {
             if ($insertStmt->execute()) $saved++; else $skipped++;
             $insertStmt->close();
         }
-        $approvalMessage = "Deworming & WIFA approved. Saved {$saved} records. Skipped {$skipped} records.";
+        $approvalMessage = "Deworming & WIFA approved. Processed {$saved} records. Skipped {$skipped} records.";
     }
     // ------------------------------------------------------------------
     // 2. OKD & LHAS
@@ -306,39 +302,6 @@ try {
     elseif ($report_code === "okd_lhas") {
         $parsed = parseOkdLhasExcelFile($tempFile);
         $records = $parsed["records"] ?? [];
-
-        $lrnInFile = [];
-        $duplicatesInFile = [];
-        foreach ($records as $record) {
-            $lrn = trim($record["lrn"] ?? "");
-            if ($lrn === "") continue;
-            if (in_array($lrn, $lrnInFile)) $duplicatesInFile[] = $lrn;
-            else $lrnInFile[] = $lrn;
-        }
-        if (!empty($duplicatesInFile)) {
-            $conn->rollback();
-            if (file_exists($tempFile)) unlink($tempFile);
-            echo json_encode(["success" => false, "message" => "Duplicate LRNs in OKD file.", "details" => implode(", ", array_unique($duplicatesInFile))]);
-            exit;
-        }
-
-        $existingLrns = [];
-        if (!empty($lrnInFile)) {
-            $placeholders = implode(',', array_fill(0, count($lrnInFile), '?'));
-            $checkStmt = $conn->prepare("SELECT lrn FROM okd_lhas_records WHERE lrn IN ($placeholders)");
-            $types = str_repeat("s", count($lrnInFile));
-            $checkStmt->bind_param($types, ...$lrnInFile);
-            $checkStmt->execute();
-            $res = $checkStmt->get_result();
-            while ($row = $res->fetch_assoc()) $existingLrns[] = $row["lrn"];
-            $checkStmt->close();
-        }
-        if (!empty($existingLrns)) {
-            $conn->rollback();
-            if (file_exists($tempFile)) unlink($tempFile);
-            echo json_encode(["success" => false, "message" => "LRNs already exist in OKD records.", "details" => implode(", ", $existingLrns)]);
-            exit;
-        }
 
         $deleteStmt = $conn->prepare("DELETE FROM okd_lhas_records WHERE upload_id = ?");
         $deleteStmt->bind_param("i", $upload_id);
@@ -366,16 +329,24 @@ try {
                 continue;
             }
 
-            $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
-            $findStmt->bind_param("s", $lrn);
-            $findStmt->execute();
-            $match = $findStmt->get_result()->fetch_assoc();
-            $findStmt->close();
-            if ($match) $studentRecordId = intval($match["record_id"]);
+            $learner = clinicEnsureLearnerForCategory($conn, ['lrn' => $lrn, 'school_year' => $fileSchoolYear,
+                'learner_name' => $learnerName, 'sex' => $sex, 'birthdate' => $birthdate,
+                'age' => $age, 'grade_level' => $fileGradeLevel]);
+            if ($learner['created']) $provisionalCreated++;
+            $studentRecordId = $learner['record_id'];
+            $recSchoolYear = $fileSchoolYear;
+            $recGradeLevel = $learner['grade_level'] ?: $fileGradeLevel;
 
-            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
-            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+            if (clinicFillExistingSection($conn, 'okd_lhas', [
+                'student_record_id' => $studentRecordId, 'lrn' => $lrn, 'learner_name' => $learnerName,
+                'sex' => $sex, 'birthdate' => $birthdate, 'age' => $age,
+                'school_year' => $recSchoolYear, 'grade_level' => $recGradeLevel,
+                'screening_type' => $screeningType, 'masterlisted' => $masterlisted,
+                'screened' => $screened, 'findings' => $findings,
+                'referred_school' => $referredSchool, 'referred_lgu' => $referredLgu,
+                'referred_private' => $referredPrivate, 'referred_others' => $referredOthers,
+                'remarks' => $remarks,
+            ], $upload_id, $overrideExisting)) { $saved++; continue; }
 
             $insertStmt = $conn->prepare("
                 INSERT INTO okd_lhas_records (
@@ -395,7 +366,7 @@ try {
             if ($insertStmt->execute()) $saved++; else $skipped++;
             $insertStmt->close();
         }
-        $approvalMessage = "OKD and LHAS approved. Saved {$saved} records. Skipped {$skipped} records.";
+        $approvalMessage = "OKD and LHAS approved. Processed {$saved} records. Skipped {$skipped} records.";
     }
     // ------------------------------------------------------------------
     // 3. IMMUNIZATION
@@ -403,39 +374,6 @@ try {
     elseif ($report_code === "immunization_nutritional_status") {
         $parsed = parseImmunizationExcelFile($tempFile);
         $records = $parsed["records"] ?? [];
-
-        $lrnInFile = [];
-        $duplicatesInFile = [];
-        foreach ($records as $record) {
-            $lrn = trim($record["lrn"] ?? "");
-            if ($lrn === "") continue;
-            if (in_array($lrn, $lrnInFile)) $duplicatesInFile[] = $lrn;
-            else $lrnInFile[] = $lrn;
-        }
-        if (!empty($duplicatesInFile)) {
-            $conn->rollback();
-            if (file_exists($tempFile)) unlink($tempFile);
-            echo json_encode(["success" => false, "message" => "Duplicate LRNs in Immunization file.", "details" => implode(", ", array_unique($duplicatesInFile))]);
-            exit;
-        }
-
-        $existingLrns = [];
-        if (!empty($lrnInFile)) {
-            $placeholders = implode(',', array_fill(0, count($lrnInFile), '?'));
-            $checkStmt = $conn->prepare("SELECT lrn FROM immunization_records WHERE lrn IN ($placeholders)");
-            $types = str_repeat("s", count($lrnInFile));
-            $checkStmt->bind_param($types, ...$lrnInFile);
-            $checkStmt->execute();
-            $res = $checkStmt->get_result();
-            while ($row = $res->fetch_assoc()) $existingLrns[] = $row["lrn"];
-            $checkStmt->close();
-        }
-        if (!empty($existingLrns)) {
-            $conn->rollback();
-            if (file_exists($tempFile)) unlink($tempFile);
-            echo json_encode(["success" => false, "message" => "LRNs already exist in Immunization records.", "details" => implode(", ", $existingLrns)]);
-            exit;
-        }
 
         $deleteStmt = $conn->prepare("DELETE FROM immunization_records WHERE upload_id = ?");
         $deleteStmt->bind_param("i", $upload_id);
@@ -458,16 +396,21 @@ try {
                 continue;
             }
 
-            $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
-            $findStmt->bind_param("s", $lrn);
-            $findStmt->execute();
-            $match = $findStmt->get_result()->fetch_assoc();
-            $findStmt->close();
-            if ($match) $studentRecordId = intval($match["record_id"]);
+            $learner = clinicEnsureLearnerForCategory($conn, ['lrn' => $lrn, 'school_year' => $fileSchoolYear,
+                'learner_name' => $learnerName, 'sex' => $sex, 'birthdate' => $birthdate,
+                'age' => $age, 'grade_level' => $fileGradeLevel]);
+            if ($learner['created']) $provisionalCreated++;
+            $studentRecordId = $learner['record_id'];
+            $recSchoolYear = $fileSchoolYear;
+            $recGradeLevel = $learner['grade_level'] ?: $fileGradeLevel;
 
-            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
-            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+            if (clinicFillExistingSection($conn, 'immunization', [
+                'student_record_id' => $studentRecordId, 'lrn' => $lrn, 'learner_name' => $learnerName,
+                'sex' => $sex, 'birthdate' => $birthdate, 'age' => $age,
+                'school_year' => $recSchoolYear, 'grade_level' => $recGradeLevel,
+                'vaccine' => $vaccine, 'dose' => $dose, 'immunized' => $immunized,
+                'remarks' => $remarks,
+            ], $upload_id, $overrideExisting)) { $saved++; continue; }
 
             $insertStmt = $conn->prepare("
                 INSERT INTO immunization_records (
@@ -485,7 +428,7 @@ try {
             if ($insertStmt->execute()) $saved++; else $skipped++;
             $insertStmt->close();
         }
-        $approvalMessage = "Immunization approved. Saved {$saved} records. Skipped {$skipped} records.";
+        $approvalMessage = "Immunization approved. Processed {$saved} records. Skipped {$skipped} records.";
     }
     // ------------------------------------------------------------------
     // 4. TOBACCO CONTROL
@@ -509,24 +452,6 @@ try {
             exit;
         }
 
-        $existingLrns = [];
-        if (!empty($lrnInFile)) {
-            $placeholders = implode(',', array_fill(0, count($lrnInFile), '?'));
-            $checkStmt = $conn->prepare("SELECT lrn FROM tobacco_control_records WHERE lrn IN ($placeholders)");
-            $types = str_repeat("s", count($lrnInFile));
-            $checkStmt->bind_param($types, ...$lrnInFile);
-            $checkStmt->execute();
-            $res = $checkStmt->get_result();
-            while ($row = $res->fetch_assoc()) $existingLrns[] = $row["lrn"];
-            $checkStmt->close();
-        }
-        if (!empty($existingLrns)) {
-            $conn->rollback();
-            if (file_exists($tempFile)) unlink($tempFile);
-            echo json_encode(["success" => false, "message" => "LRNs already exist in Tobacco records.", "details" => implode(", ", $existingLrns)]);
-            exit;
-        }
-
         $deleteStmt = $conn->prepare("DELETE FROM tobacco_control_records WHERE upload_id = ?");
         $deleteStmt->bind_param("i", $upload_id);
         $deleteStmt->execute();
@@ -547,17 +472,21 @@ try {
                 continue;
             }
 
-            $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
-            $findStmt->bind_param("s", $lrn);
-            $findStmt->execute();
-            $match = $findStmt->get_result()->fetch_assoc();
-            $findStmt->close();
-            if ($match) $studentRecordId = intval($match["record_id"]);
+            $learner = clinicEnsureLearnerForCategory($conn, ['lrn' => $lrn, 'school_year' => $fileSchoolYear,
+                'learner_name' => $learnerName, 'sex' => $sex, 'birthdate' => $birthdate,
+                'age' => $age, 'grade_level' => $fileGradeLevel]);
+            if ($learner['created']) $provisionalCreated++;
+            $studentRecordId = $learner['record_id'];
+            $recSchoolYear = $fileSchoolYear;
+            $recGradeLevel = $learner['grade_level'] ?: $fileGradeLevel;
 
-            // School year + grade: prefer the matched student's, else the file's row 7 values.
-            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
-            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+            if (clinicFillExistingSection($conn, 'tobacco', [
+                'student_record_id' => $studentRecordId, 'lrn' => $lrn, 'learner_name' => $learnerName,
+                'sex' => $sex, 'birthdate' => $birthdate, 'age' => $age,
+                'school_year' => $recSchoolYear, 'grade_level' => $recGradeLevel,
+                'violation_type' => $violationType, 'referred_to_care' => $referredToCare,
+                'remarks' => $remarks,
+            ], $upload_id, $overrideExisting)) { $saved++; continue; }
 
             $insertStmt = $conn->prepare("
                 INSERT INTO tobacco_control_records (
@@ -575,7 +504,7 @@ try {
             if ($insertStmt->execute()) $saved++; else $skipped++;
             $insertStmt->close();
         }
-        $approvalMessage = "Comprehensive Tobacco Control approved. Saved {$saved} records. Skipped {$skipped} records.";
+        $approvalMessage = "Comprehensive Tobacco Control approved. Processed {$saved} records. Skipped {$skipped} records.";
     }
     // ------------------------------------------------------------------
     // 5. ADOLESCENT REPRODUCTIVE HEALTH (ARH)
@@ -596,24 +525,6 @@ try {
             $conn->rollback();
             if (file_exists($tempFile)) unlink($tempFile);
             echo json_encode(["success" => false, "message" => "Duplicate LRNs in ARH file.", "details" => implode(", ", array_unique($duplicatesInFile))]);
-            exit;
-        }
-
-        $existingLrns = [];
-        if (!empty($lrnInFile)) {
-            $placeholders = implode(',', array_fill(0, count($lrnInFile), '?'));
-            $checkStmt = $conn->prepare("SELECT lrn FROM arh_records WHERE lrn IN ($placeholders)");
-            $types = str_repeat("s", count($lrnInFile));
-            $checkStmt->bind_param($types, ...$lrnInFile);
-            $checkStmt->execute();
-            $res = $checkStmt->get_result();
-            while ($row = $res->fetch_assoc()) $existingLrns[] = $row["lrn"];
-            $checkStmt->close();
-        }
-        if (!empty($existingLrns)) {
-            $conn->rollback();
-            if (file_exists($tempFile)) unlink($tempFile);
-            echo json_encode(["success" => false, "message" => "LRNs already exist in ARH records.", "details" => implode(", ", $existingLrns)]);
             exit;
         }
 
@@ -638,17 +549,21 @@ try {
                 continue;
             }
 
-            $studentRecordId = null;
-            $findStmt = $conn->prepare("SELECT record_id, grade_level, school_year FROM sf8_student_records WHERE lrn = ? LIMIT 1");
-            $findStmt->bind_param("s", $lrn);
-            $findStmt->execute();
-            $match = $findStmt->get_result()->fetch_assoc();
-            $findStmt->close();
-            if ($match) $studentRecordId = intval($match["record_id"]);
+            $learner = clinicEnsureLearnerForCategory($conn, ['lrn' => $lrn, 'school_year' => $fileSchoolYear,
+                'learner_name' => $learnerName, 'sex' => $sex, 'birthdate' => $birthdate,
+                'age' => $age, 'grade_level' => $fileGradeLevel]);
+            if ($learner['created']) $provisionalCreated++;
+            $studentRecordId = $learner['record_id'];
+            $recSchoolYear = $fileSchoolYear;
+            $recGradeLevel = $learner['grade_level'] ?: $fileGradeLevel;
 
-            // School year + grade: prefer the matched student's, else the file's row 7 values.
-            $recSchoolYear = ($match && !empty($match["school_year"])) ? $match["school_year"] : $fileSchoolYear;
-            $recGradeLevel = ($match && !empty($match["grade_level"])) ? $match["grade_level"] : $fileGradeLevel;
+            if (clinicFillExistingSection($conn, 'arh', [
+                'student_record_id' => $studentRecordId, 'lrn' => $lrn, 'learner_name' => $learnerName,
+                'sex' => $sex, 'birthdate' => $birthdate, 'age' => $age,
+                'school_year' => $recSchoolYear, 'grade_level' => $recGradeLevel,
+                'pregnancy_status' => $pregnancyStatus, 'delivery_mode' => $deliveryMode,
+                'peer_educator' => $peerEducator, 'remarks' => $remarks,
+            ], $upload_id, $overrideExisting)) { $saved++; continue; }
 
             $insertStmt = $conn->prepare("
                 INSERT INTO arh_records (
@@ -666,7 +581,7 @@ try {
             if ($insertStmt->execute()) $saved++; else $skipped++;
             $insertStmt->close();
         }
-        $approvalMessage = "Adolescent Reproductive Health approved. Saved {$saved} records. Skipped {$skipped} records.";
+        $approvalMessage = "Adolescent Reproductive Health approved. Processed {$saved} records. Skipped {$skipped} records.";
     }
     // ------------------------------------------------------------------
     // 6. SF8 NUTRITIONAL STATUS (DEFAULT)
@@ -690,24 +605,6 @@ try {
             exit;
         }
 
-        $existingLrns = [];
-        if (!empty($lrnInFile)) {
-            $placeholders = implode(',', array_fill(0, count($lrnInFile), '?'));
-            $checkStmt = $conn->prepare("SELECT lrn FROM sf8_student_records WHERE lrn IN ($placeholders)");
-            $types = str_repeat("s", count($lrnInFile));
-            $checkStmt->bind_param($types, ...$lrnInFile);
-            $checkStmt->execute();
-            $res = $checkStmt->get_result();
-            while ($row = $res->fetch_assoc()) $existingLrns[] = $row["lrn"];
-            $checkStmt->close();
-        }
-        if (!empty($existingLrns)) {
-            $conn->rollback();
-            if (file_exists($tempFile)) unlink($tempFile);
-            echo json_encode(["success" => false, "message" => "LRNs already exist in Student Records.", "details" => implode(", ", $existingLrns)]);
-            exit;
-        }
-
         $deleteStmt = $conn->prepare("DELETE FROM sf8_student_records WHERE upload_id = ?");
         $deleteStmt->bind_param("i", $upload_id);
         $deleteStmt->execute();
@@ -723,7 +620,7 @@ try {
             $gradeLevel    = $student["grade_level"] ?? "";
             $section       = $student["section"] ?? "";
             $trackStrand   = $student["track_strand"] ?? "";
-            $schoolYear    = $student["school_year"] ?? "";
+            $schoolYear    = $fileSchoolYear;
             $learnerName   = $student["learner_name"] ?? "";
             $birthdate     = $student["birthdate"] ?? "";
             $age           = $student["age"] ?? "";
@@ -735,11 +632,34 @@ try {
             $bmi           = is_numeric($student["bmi"] ?? null) ? (float)$student["bmi"] : 0.0;
 
             $bmiCategory   = $student["bmi_category"] ?? "";
-            $heightForAge  = $student["height_for_age"] ?? "";
+            $heightForAge  = is_numeric($age) && $heightM > 0
+                ? whoHeightForAge($heightM, (float)$age * 12, $sex) : '';
             $remarks       = $student["remarks"] ?? "";
 
             if (trim($learnerName) === "" || $lrn === "") {
                 $skipped++;
+                continue;
+            }
+
+            $completedProvisional = false;
+            $existingStudentId = clinicFillExistingStudent($conn, [
+                'lrn' => $lrn, 'school_year' => $schoolYear,
+                'school_name' => $schoolName, 'district' => $district,
+                'division' => $division, 'region' => $region, 'school_id' => $schoolId,
+                'grade_level' => $gradeLevel, 'section' => $section,
+                'track_strand' => $trackStrand, 'learner_name' => $learnerName,
+                'birthdate' => $birthdate, 'age' => $age, 'sex' => $sex,
+                'weight_kg' => is_numeric($student['weight_kg'] ?? null) ? $weightKg : null,
+                'height_m' => is_numeric($student['height_m'] ?? null) ? $heightM : null,
+                'height_squared' => is_numeric($student['height_squared'] ?? null) ? $heightSquared : null,
+                'bmi' => is_numeric($student['bmi'] ?? null) ? $bmi : null,
+                'bmi_category' => $bmiCategory, 'height_for_age' => $heightForAge,
+                'remarks' => $remarks,
+            ], $overrideExisting, $completedProvisional);
+            if ($existingStudentId !== null) {
+                if ($completedProvisional) $provisionalCompleted++;
+                clinicEnsureStudentSections($conn, $existingStudentId);
+                $saved++;
                 continue;
             }
 
@@ -781,6 +701,7 @@ try {
             );
 
             if ($insertStmt->execute()) {
+                clinicEnsureStudentSections($conn, $insertStmt->insert_id);
                 $saved++;
             } else {
                 $skipped++;
@@ -788,8 +709,21 @@ try {
             $insertStmt->close();
         }
 
-        $approvalMessage = "Student Information approved. Saved {$saved} records. Skipped {$skipped} records.";
+        $approvalMessage = "Student Information approved. Processed {$saved} records. Skipped {$skipped} records.";
     }
+
+    if ($saved === 0) {
+        $conn->rollback();
+        if (file_exists($tempFile)) unlink($tempFile);
+        http_response_code(422);
+        echo json_encode(['success' => false,
+            'message' => 'No valid learner records were found in this SF8 file. Nothing was approved.',
+            'details' => "Skipped {$skipped} records. Check the LRN, learner name, and required columns."]);
+        exit;
+    }
+
+    if ($provisionalCreated) $approvalMessage .= " Created {$provisionalCreated} provisional learner profiles.";
+    if ($provisionalCompleted) $approvalMessage .= " Completed {$provisionalCompleted} provisional learner profiles.";
 
     $updateStmt = $conn->prepare("
         UPDATE sf8_uploads
@@ -813,7 +747,9 @@ try {
         "success" => true,
         "message" => $approvalMessage,
         "saved" => $saved,
-        "skipped" => $skipped
+        "skipped" => $skipped,
+        "provisional_created" => $provisionalCreated,
+        "provisional_completed" => $provisionalCompleted
     ]);
 
     $conn->close();
@@ -825,11 +761,16 @@ try {
     if (isset($tempFile) && file_exists($tempFile)) {
         unlink($tempFile);
     }
+    $duplicate = $e instanceof mysqli_sql_exception && $e->getCode() === 1062;
+    http_response_code($duplicate ? 409 : ($e instanceof Sf8Exception || $e instanceof InvalidArgumentException ? 422 : 503));
+    if (!$duplicate && !($e instanceof Sf8Exception || $e instanceof InvalidArgumentException)) {
+        error_log('ClinicDesk SF8 approval failed: ' . $e->getMessage());
+    }
     echo json_encode([
         "success" => false,
-        "message" => "Approval failed: " . $e->getMessage(),
-        "file" => $e->getFile(),
-        "line" => $e->getLine()
+        "message" => $duplicate ? 'Another record already exists for this learner and SF8 entry. Reload the preview before trying again.'
+            : ($e instanceof Sf8Exception || $e instanceof InvalidArgumentException
+                ? $e->getMessage() : "Approval failed. Check the server configuration or try again.")
     ]);
 }
 ?>

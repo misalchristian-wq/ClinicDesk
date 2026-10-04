@@ -5,7 +5,9 @@
 // ARH/tobacco records now carry their own school_year + grade_level
 // (see arh_add_year_grade.sql), so no fragile join is needed.
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
+require_once __DIR__ . '/auth.php';
+authenticate();
+requireRole(['Clinic Nurse', 'School Admin']);
 include "../db.php";
 
 $schoolYear = trim($_REQUEST["school_year"] ?? "");
@@ -26,6 +28,7 @@ $response = [
 $sql = "SELECT grade_level, delivery_mode, COUNT(*) AS total
         FROM arh_records
         WHERE school_year = ?
+          AND upload_id IS NOT NULL
           AND LOWER(pregnancy_status) = 'pregnant'
         GROUP BY grade_level, delivery_mode";
 $stmt = $conn->prepare($sql);
@@ -48,7 +51,7 @@ while ($row = $res->fetch_assoc()) {
 $stmt->close();
 
 // Peer educators
-$sql = "SELECT COUNT(*) AS c FROM arh_records WHERE school_year = ? AND peer_educator = 1";
+$sql = "SELECT COUNT(*) AS c FROM arh_records WHERE school_year = ? AND upload_id IS NOT NULL AND peer_educator = 1";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("s", $schoolYear);
 $stmt->execute();
@@ -60,7 +63,7 @@ $stmt->close();
 // ---- Tobacco (Box 6): by level group (JHS 7-10, SHS 11-12) ----
 $sql = "SELECT grade_level, referred_to_care
         FROM tobacco_control_records
-        WHERE school_year = ?";
+        WHERE school_year = ? AND upload_id IS NOT NULL";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("s", $schoolYear);
 $stmt->execute();

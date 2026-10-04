@@ -1,121 +1,90 @@
-from flask import Flask, request, jsonify
-import joblib
-import numpy as np
+"""Local symptom-based screening service. Scores are prompts for nurse review."""
+import glob
 import json
 import os
-import glob
+
+import joblib
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
-
-# ── Load latest model version ──
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-versions = sorted(glob.glob(os.path.join(BASE_DIR, 'version_*')), reverse=True)
-if not versions:
-    raise RuntimeError('No model version found. Run the training notebook first.')
+VERSION_DIR = sorted(glob.glob(os.path.join(BASE_DIR, 'version_*')), reverse=True)[0]
+with open(os.path.join(VERSION_DIR, 'metadata.json'), encoding='utf-8') as handle:
+    meta = json.load(handle)
+model = joblib.load(os.path.join(VERSION_DIR, 'model.joblib'))
+FEATURE_COLS = meta['feature_cols']
+BEST_MODEL = meta['best_model']
 
-VERSION_DIR = versions[0]
-print(f'Loading model from: {VERSION_DIR}')
-
-model     = joblib.load(os.path.join(VERSION_DIR, 'best_model.pkl'))
-scaler    = joblib.load(os.path.join(VERSION_DIR, 'scaler.pkl'))
-le_def    = joblib.load(os.path.join(VERSION_DIR, 'label_encoder_def.pkl'))
-le_risk   = joblib.load(os.path.join(VERSION_DIR, 'label_encoder_risk.pkl'))
-
-with open(os.path.join(VERSION_DIR, 'metadata.json')) as f:
-    meta = json.load(f)
-
-with open(os.path.join(VERSION_DIR, 'recommendations.json'), encoding='utf-8') as f:
-    RECOMMENDATIONS = json.load(f)
-
-FEATURE_COLS  = meta['feature_cols']
-BEST_MODEL    = meta['best_model']
-USES_SCALER   = meta['uses_scaler']
-
-DIET_MAP     = {'balanced': 0, 'vegetarian': 1, 'high protein': 2, 'low calorie': 3, 'other': 4}
-EXERCISE_MAP = {'sedentary': 0, 'light': 1, 'moderate': 2, 'active': 3}
-SUN_MAP      = {'low': 0, 'moderate': 1, 'high': 2}
-
+CATEGORICAL = {
+    'Gender': ('Male', 'Female'),
+    'Diet Type': ('Vegetarian', 'Non-Vegetarian'),
+    'Living Environment': ('Rural', 'Urban'),
+    'Skin Condition': ('Normal', 'Dry Skin', 'Rough Skin', 'Pale/Yellow Skin'),
+}
+BINARY = [key for key in FEATURE_COLS if key not in CATEGORICAL and key != 'Age']
+FOODS = {
+    'Iron': 'Malunggay, kangkong, beans, meat, sardines',
+    'Vitamin A': 'Squash, carrots, malunggay, eggs',
+    'Vitamin B12': 'Fish, eggs, dairy, meat',
+    'Vitamin C': 'Guava, citrus, tomato, vegetables',
+    'Vitamin D': 'Fortified milk, sardines, eggs',
+    'Zinc': 'Beans, seafood, meat, seeds',
+    'No Deficiency': 'Varied meals with vegetables, fruit and protein',
+}
 
 def build_feature_vector(data):
-    """Map incoming PHP payload to the model feature vector."""
-    gender = 1 if str(data.get('gender', 'Female')).strip().lower() in ('male', 'm') else 0
-    diet   = DIET_MAP.get(str(data.get('diet_type', 'Balanced')).strip().lower(), 0)
-    ex     = EXERCISE_MAP.get(str(data.get('exercise_level', 'Moderate')).strip().lower(), 2)
-    sun    = SUN_MAP.get(str(data.get('sun_exposure', 'Moderate')).strip().lower(), 1)
-
-    vec = [
-        float(data.get('age', 13)),
-        gender,
-        float(data.get('bmi', 20)),
-        ex, diet, sun,
-        int(data.get('has_night_blindness', 0)),
-        int(data.get('has_fatigue', 0)),
-        int(data.get('has_bleeding_gums', 0)),
-        int(data.get('has_bone_pain', 0)),
-        int(data.get('has_muscle_weakness', 0)),
-        int(data.get('has_numbness_tingling', 0)),
-        int(data.get('has_memory_problems', 0)),
-        int(data.get('has_pale_skin', 0)),
-        int(data.get('has_multiple_deficiencies', 0)),
-        int(data.get('symptoms_count', 0)),
-        float(data.get('hemoglobin_g_dl', 12.5)),
-        float(data.get('serum_vitamin_d_ng_ml', 25)),
-        float(data.get('serum_vitamin_b12_pg_ml', 350)),
-        float(data.get('serum_folate_ng_ml', 8)),
-    ]
-    return np.array(vec).reshape(1, -1)
-
+    if not isinstance(data, dict):
+        raise ValueError('A JSON assessment object is required.')
+    missing = [key for key in FEATURE_COLS if key not in data or data[key] in (None, '')]
+    if missing:
+        raise ValueError('Missing model inputs: ' + ', '.join(missing))
+    result = {}
+    for key, values in CATEGORICAL.items():
+        value = str(data[key]).strip()
+        if value not in values:
+            raise ValueError('Invalid ' + key + '.')
+        result[key] = value
+    try:
+        age = int(data['Age'])
+    except (TypeError, ValueError):
+        raise ValueError('Age must be a whole number.') from None
+    if age < 5 or age > 69:
+        raise ValueError("Age is outside this dataset's 5-69 year range.")
+    result['Age'] = age
+    for key in BINARY:
+        if type(data[key]) is not int or data[key] not in (0, 1):
+            raise ValueError(key + ' must be 0 or 1.')
+        result[key] = data[key]
+    return [result]
 
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        data = request.get_json(force=True)
-        X = build_feature_vector(data)
-
-        if USES_SCALER:
-            X = scaler.transform(X)
-
-        pred_def  = model.predict(X)[0]
-        deficiency = le_def.inverse_transform([pred_def])[0]
-
-        # Confidence score from probability if available
-        if hasattr(model, 'predict_proba'):
-            proba = model.predict_proba(X)[0]
-            confidence = round(float(np.max(proba)), 4)
+        features = build_feature_vector(request.get_json(silent=True))
+        label = str(model.predict(features)[0])
+        probability = float(max(model.predict_proba(features)[0]))
+        symptom_count = sum(features[0][key] for key in BINARY if key != 'Low Sun Exposure')
+        priority = 'High' if symptom_count >= 4 else 'Moderate' if symptom_count >= 2 or label != 'No Deficiency' else 'Low'
+        if label == 'Iron':
+            recommendation = ('Possible iron-related concern for nurse review. Discuss iron-rich foods. '
+                              'Ferrous sulfate only if separately assessed and authorized under clinic protocol.')
+        elif label == 'No Deficiency':
+            recommendation = 'No concern flagged by this dataset model. Continue usual clinical review.'
         else:
-            confidence = 0.75
-
-        # Risk level: derive from BMI + deficiency severity
-        bmi = float(data.get('bmi', 20))
-        symptoms_count = int(data.get('symptoms_count', 0))
-        if bmi < 16 or symptoms_count >= 4 or deficiency == 'Severe Malnutrition':
-            risk = 'High'
-        elif bmi < 18.5 or symptoms_count >= 2 or deficiency != 'Normal':
-            risk = 'Moderate'
-        else:
-            risk = 'Low'
-
-        recs = RECOMMENDATIONS.get(deficiency, RECOMMENDATIONS['Normal'])
-
-        return jsonify({
-            'success': True,
-            'predicted_deficiency': deficiency,
-            'predicted_risk_level': risk,
-            'confidence_score': confidence,
-            'algorithm_used': BEST_MODEL,
-            'recommendation_text': recs['recommendation_text'],
-            'recommended_foods': recs['recommended_foods'],
-            'intervention_type': recs['intervention_type'],
-        })
-
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
+            recommendation = f'Possible {label.lower()}-related concern for nurse review; consider dietary counseling or referral as appropriate.'
+        return jsonify({'success': True, 'predicted_deficiency': label,
+                        'predicted_risk_level': priority, 'confidence_score': round(probability, 4),
+                        'algorithm_used': BEST_MODEL, 'recommendation_text': recommendation,
+                        'recommended_foods': FOODS[label], 'intervention_type': 'Nurse Review'})
+    except (ValueError, TypeError, KeyError) as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
+    except Exception:
+        app.logger.exception('Prediction failed')
+        return jsonify({'success': False, 'message': 'Prediction failed.'}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok', 'model': BEST_MODEL, 'version': os.path.basename(VERSION_DIR)})
 
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    app.run(host='127.0.0.1', port=5001, debug=False, use_reloader=False)

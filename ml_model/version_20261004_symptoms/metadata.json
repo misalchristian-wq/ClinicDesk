@@ -1,0 +1,53 @@
+{
+  "best_model": "Random Forest (symptom CSV)",
+  "feature_cols": [
+    "Age",
+    "Gender",
+    "Diet Type",
+    "Living Environment",
+    "Night Blindness",
+    "Dry Eyes",
+    "Bleeding Gums",
+    "Fatigue",
+    "Tingling Sensation",
+    "Low Sun Exposure",
+    "Reduced Memory Capacity",
+    "Shortness of Breath",
+    "Loss of Appetite",
+    "Fast Heart Rate",
+    "Brittle Nails",
+    "Weight Loss",
+    "Reduced Wound Healing Capacity",
+    "Skin Condition"
+  ],
+  "deficiency_classes": [
+    "Iron",
+    "No Deficiency",
+    "Vitamin A",
+    "Vitamin B12",
+    "Vitamin C",
+    "Vitamin D",
+    "Zinc"
+  ],
+  "source_file": "symptom_based_vitamin_deficiency_dataset_final.csv",
+  "source_sha256": "fa2a6e94df7f66daea748085cb651cd54d4451913791fef1c2ea32ef7a61553c",
+  "total_rows": 1000,
+  "train_rows": 750,
+  "test_rows": 250,
+  "split_seed": 42,
+  "test_metrics": {
+    "accuracy": 0.328,
+    "precision": 0.2098,
+    "recall": 0.2238,
+    "f1_score": 0.1901,
+    "count": 250
+  },
+  "school_age_test_metrics": {
+    "accuracy": 0.2162,
+    "precision": 0.0853,
+    "recall": 0.175,
+    "f1_score": 0.1033,
+    "count": 37
+  },
+  "limitations": "Single Kaggle dataset; no local learner validation. Do not diagnose."
+}
